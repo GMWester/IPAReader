@@ -1,0 +1,21 @@
+# Built-in female voice (same values as `-v female`). Copy this file to make a new voice.
+name = female
+pitch = 200
+pitch_range = 1.15
+formant_scale = 1.13
+bandwidth_scale = 1.1
+open_quotient = 0.65
+spectral_tilt = 0.35
+breathiness = 0.09
+jitter = 0.005
+shimmer = 0.03
+vibrato_depth = 0.08
+vibrato_rate = 5
+speed = 1
+volume = 1
+frication_gain = 1
+f1_shift = 1.05
+f2_shift = 1
+f3_shift = 1
+f4_shift = 1
+f5_shift = 1

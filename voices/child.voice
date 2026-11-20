@@ -1,0 +1,9 @@
+# Example custom voice: start from a built-in voice and change what you need.
+name = child
+base = female
+pitch = 270
+formant_scale = 1.28
+f1_shift = 1.0
+open_quotient = 0.7
+breathiness = 0.12
+speed = 1.05

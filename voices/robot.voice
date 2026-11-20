@@ -1,0 +1,11 @@
+# Example custom voice: flat, buzzy, monotone.
+name = robot
+base = male
+pitch = 100
+pitch_range = 0
+jitter = 0
+shimmer = 0
+vibrato_depth = 0
+breathiness = 0
+open_quotient = 0.35
+spectral_tilt = 0

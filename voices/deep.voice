@@ -1,0 +1,8 @@
+# Example custom voice: a lower, darker male voice.
+name = deep
+base = male
+pitch = 85
+pitch_range = 0.8
+formant_scale = 0.92
+spectral_tilt = 0.45
+speed = 0.92
