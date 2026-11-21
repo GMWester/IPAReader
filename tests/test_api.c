@@ -22,11 +22,11 @@ int main(void) {
     CHECK(ipr_voice_builtin("FEMALE", &f) == IPR_OK);
     CHECK(ipr_voice_builtin("nope", &c) == IPR_ERR_VOICE);
     CHECK(ipr_voice_builtin_count() == 2);
-    CHECK(f.pitch > m.pitch && f.formant_scale > m.formant_scale);
+    CHECK(f.pitch > m.pitch && f.formant_shift[0] > m.formant_shift[0]);
 
     /* custom voice from text */
     CHECK(ipr_voice_parse("base = female\npitch = 250 # high\nname=kid\n", &c) == IPR_OK);
-    CHECK(fabsf(c.pitch - 250) < 1e-3 && strcmp(c.name, "kid") == 0 && c.formant_scale == f.formant_scale);
+    CHECK(fabsf(c.pitch - 250) < 1e-3 && strcmp(c.name, "kid") == 0 && c.formant_shift[0] == f.formant_shift[0]);
     CHECK(ipr_voice_parse("pitch = 9999\n", &c) == IPR_ERR_VOICE);
     CHECK(ipr_voice_parse("bogus = 1\n", &c) == IPR_ERR_VOICE);
     /* format -> parse round trip */
