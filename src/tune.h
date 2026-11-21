@@ -27,7 +27,7 @@
     X(OQ_STRESS, 0.05) X(OQ_FINAL, 0.12) X(SYL_ENV, 0.2) X(SM_F0, 45) X(VOFF_ASP, 0.12) \
     X(PEAK_POS, 0.68) X(ACC_START, 0.15) X(VOICING_DUR, 0.18) \
     X(ACC_FIRST, 0.15) X(ACC_DOWN, 0.08) X(VDRIFT, 0.12) X(GLIDE_RAISE, 0.6) \
-    X(PINCH, 300) X(NG_BW, 4.0) X(N_F3, 2800)
+    X(PINCH, 300) X(NG_BW, 1.0) X(N_F3, 2800) X(M_BW, 1.3) X(N_BW, 1.0)
 
 enum {
 #define X(n, d) TU_##n,

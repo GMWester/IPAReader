@@ -192,6 +192,8 @@ static void seg_target(const Seg *s, Formants *o) {
             else if (p == P_LABVELAR) { o->F[1] = 1000; o->F[2] = 2200; }
             o->B[1] = 150; o->B[2] = 200;
             if (p == P_VELAR || p == P_UVULAR) { o->B[1] *= T(NG_BW); o->B[2] *= T(NG_BW); }   /* darker murmur */
+            if (p == P_BILABIAL || p == P_LABIODENTAL) { o->B[1] *= T(M_BW); o->B[2] *= T(M_BW); }
+            if (p == P_ALVEOLAR || p == P_DENTAL) { o->B[1] *= T(N_BW); o->B[2] *= T(N_BW); }
             break;
         case M_LATAPPROX: case M_LATTAP:
             o->F[0] = 360; o->B[0] = 100; o->B[1] = 150; o->B[2] = 250;
