@@ -23,7 +23,8 @@
     X(RET_MS, 0.5) X(HFN, 0.04) X(FINAL_CREAK, 0.25) X(FINAL_DECAY, 0.2) \
     X(EQ_LO_F, 400) X(EQ_LO_DB, -3) X(EQ_MID_F, 2000) X(EQ_MID_DB, 5) X(EQ_GAIN, 0.9) X(NOISE_GAIN, 0.85) X(FLUTTER, 0.35) \
     X(D_H, 75) X(K_NG, 0.4) X(VSIB_BOOST, 1.4) \
-    X(LF_ON, 0) X(LF_GAIN, 1.0) X(RD_BASE, 1.0) X(RD_SLOPE, 3.0) X(CURVE, 0)
+    X(LF_ON, 1) X(LF_GAIN, 3.2) X(RD_BASE, 1.0) X(RD_SLOPE, 3.0) X(CURVE, 1) \
+    X(OQ_STRESS, 0) X(OQ_FINAL, 0) X(SYL_ENV, 0) X(SM_F0, 25) X(VOFF_ASP, 0)
 
 enum {
 #define X(n, d) TU_##n,

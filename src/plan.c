@@ -1044,7 +1044,7 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
     }
 
     /* ---- natural phrase endings: loudness decay and a little creak at the end of statements ---- */
-    if (T(FINAL_CREAK) > 0 || T(FINAL_DECAY) > 0) {
+    if (T(FINAL_CREAK) > 0 || T(FINAL_DECAY) > 0 || T(OQ_FINAL) > 0 || T(VOFF_ASP) > 0) {
         for (int i = 0; i < N; i++) {
             if (S[i].kind == K_PAUSE || !S[i].nucleus) continue;
             int j = i + 1;
@@ -1055,6 +1055,8 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
             for (int fi = a0; fi < a1 && fi < nf; fi++) {
                 float u = (float)(fi - a0) / (float)((a1 - a0) > 1 ? (a1 - a0) : 1);
                 F[fi].av *= 1.0f - T(FINAL_DECAY) * u;
+                F[fi].oq += T(OQ_FINAL) * u;   /* softer, breathier voice toward the end of a statement */
+                if (u > 0.7f) F[fi].ah = fmaxf(F[fi].ah, T(VOFF_ASP) * (u - 0.7f) / 0.3f);   /* breathy voice offset */
                 if (u > 0.5f && !S[i].ntone) F[fi].creak = fmaxf(F[fi].creak, T(FINAL_CREAK) * (u - 0.5f) * 2.0f);
             }
         }
@@ -1079,7 +1081,20 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
         if (!any) continue;
         float g = st == 2 ? 1.0f + T(STRESS_AMP) : st == 1 ? 1.0f : 1.0f - T(STRESS_AMP);
         int a0 = (int)s->t0, a1 = (int)(s->t0 + s->dur);
-        for (int fi = a0; fi < a1 && fi < nf; fi++) F[fi].av *= g;
+        for (int fi = a0; fi < a1 && fi < nf; fi++) {
+            F[fi].av *= g;
+            if (st == 2) F[fi].oq -= T(OQ_STRESS);   /* firmer, brighter voice on stressed vowels */
+        }
+    }
+    /* syllable loudness shape: vowels swell and fade slightly instead of being flat */
+    for (int i = 0; i < N; i++) {
+        Seg *s = &S[i];
+        if (s->kind != K_VOWEL || s->dur < 20) continue;
+        int a0 = (int)s->t0, a1 = (int)(s->t0 + s->dur);
+        for (int fi = a0; fi < a1 && fi < nf; fi++) {
+            float u = (float)(fi - a0) / (float)(a1 - a0);
+            F[fi].av *= 1.0f - T(SYL_ENV) * (1.0f - sinf((float)M_PI * (0.15f + 0.7f * u)));
+        }
     }
 
     /* ---- smoothing ---- */
@@ -1087,7 +1102,7 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
     SMOOTH_FIELD(F, nf, fnz, 15);
     SMOOTH_FIELD(F, nf, fnp, 15);
     SMOOTH_FIELD(F, nf, bnz, 9);
-    SMOOTH_FIELD(F, nf, f0, 25);
+    SMOOTH_FIELD(F, nf, f0, (int)T(SM_F0));
     SMOOTH_FIELD(F, nf, av, (int)T(SM_AV));
     SMOOTH_FIELD(F, nf, ah, 5);
     SMOOTH_FIELD(F, nf, af, 3);
