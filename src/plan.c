@@ -620,6 +620,9 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
             if (st == 2) d *= T(D_STRESS1); else if (st == 1) d *= T(D_STRESS2); else if (word_has_stress) d *= T(D_UNSTR);
             if (final_syl) d *= (s->length > 1.4f) ? 1.1f : T(D_FINAL);
             if (s->nasal > 0) d *= 1.05f;
+            /* vowels are longer before voiced and shorter before voiceless consonants */
+            if (s->kind == K_VOWEL && i + 1 < N && S[i + 1].kind == K_CONS && is_obstruent(&S[i + 1]) && !S[i + 1].nucleus)
+                d *= S[i + 1].voiced ? 1.0f + T(VOICING_DUR) : 1.0f - 0.6f * T(VOICING_DUR);
             if (s->kind == K_CONS && s->nucleus) d *= 1.5f;
         } else {
             int prevc = i > 0 && S[i - 1].kind == K_CONS && !S[i - 1].nucleus;
@@ -1011,7 +1014,7 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
                     if (st == 2) acc = T(ACC1) * R; else if (st == 1) acc = 0.44f * T(ACC1) * R;
                     if (ptype == PZ_EXCLAIM) acc *= 1.4f;
                     if (!intonation) decl = 0;
-                    float s0 = decl + acc * 0.5f + step, s1 = decl + acc + step, s2 = decl + acc * 0.6f + step;
+                    float s0 = decl + acc * T(ACC_START) + step, s1 = decl + acc + step, s2 = decl + acc * 0.6f + step;
                     if (intonation && k == last_nuc) {
                         if (ptype == PZ_QUESTION) { s0 = decl + acc * 0.3f; s1 = s0 + 2.0f * R; s2 = s0 + 6.0f * R; }
                         else if (ptype == PZ_COMMA || ptype == PZ_MINOR) { s2 = s1 + 1.5f * R; }
@@ -1020,7 +1023,7 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
                         s1 = decl + acc * 1.15f; s2 = decl + acc * 0.2f;
                     }
                     if (add_pitch(&P, a + (b - a) * 0.15f, base * powf(2, s0 / 12))) goto oom2;
-                    if (add_pitch(&P, a + (b - a) * 0.5f, base * powf(2, s1 / 12))) goto oom2;
+                    if (add_pitch(&P, a + (b - a) * (acc > 0 ? T(PEAK_POS) : 0.5f), base * powf(2, s1 / 12))) goto oom2;
                     if (add_pitch(&P, b - (b - a) * 0.1f, base * powf(2, s2 / 12))) goto oom2;
                 }
                 idx++;
