@@ -72,6 +72,61 @@ static double bq_run(Biquad *q, double x) {
     return y;
 }
 
+/* Liljencrants-Fant glottal flow derivative, parameterised by Rd (Fant 1995).
+ * Time is normalised to one period; Ee (the negative peak) is 1. */
+typedef struct { double rd, tp, te, ta, wg, eps, alpha, e0; int ok; } LF;
+
+static double lf_area_open(double a, double wg, double te, double e0) {
+    double d = a * a + wg * wg;
+    double at = exp(a * te) * (a * sin(wg * te) - wg * cos(wg * te));
+    double a0 = (a * 0 - wg * 1);
+    return e0 * (at - a0) / d;
+}
+
+static void lf_setup(LF *L, double rd) {
+    if (rd < 0.3) rd = 0.3;
+    if (rd > 2.7) rd = 2.7;
+    L->rd = rd;
+    double ra = (-1 + 4.8 * rd) / 100, rk = (22.4 + 11.8 * rd) / 100;
+    double rg = 0.25 * rk / ((0.11 * rd / (0.5 + 1.2 * rk)) - ra);
+    double tp = 1 / (2 * rg), te = tp * (1 + rk), ta = ra;
+    if (te > 0.98) te = 0.98;
+    if (tp > te * 0.95) tp = te * 0.95;
+    if (ta < 0.002) ta = 0.002;
+    L->tp = tp; L->te = te; L->ta = ta; L->wg = M_PI / tp;
+    /* epsilon: eps*ta = 1 - exp(-eps*(1-te)) */
+    double eps = 1 / ta;
+    for (int i = 0; i < 40; i++) eps = (1 - exp(-eps * (1 - te))) / ta;
+    L->eps = eps;
+    /* return-phase area (Ee = 1) */
+    double tc = 1 - te, ex = exp(-eps * tc);
+    double a2 = -(1 / (eps * ta)) * ((1 - ex) / eps - tc * ex);
+    /* alpha: total area zero; e0 chosen so that g(te) = -1 */
+    double lo = -20, hi = 80;
+    double flo = 0, fhi = 0;
+    for (int pass = 0; pass < 2; pass++) {
+        double a = pass ? hi : lo;
+        double e0 = -1 / (exp(a * te) * sin(L->wg * te));
+        double f = lf_area_open(a, L->wg, te, e0) + a2;
+        if (pass) fhi = f; else flo = f;
+    }
+    L->ok = (flo * fhi < 0);
+    if (!L->ok) return;
+    for (int i = 0; i < 60; i++) {
+        double m = 0.5 * (lo + hi);
+        double e0 = -1 / (exp(m * te) * sin(L->wg * te));
+        double f = lf_area_open(m, L->wg, te, e0) + a2;
+        if ((f < 0) == (flo < 0)) { lo = m; flo = f; } else hi = m;
+    }
+    L->alpha = 0.5 * (lo + hi);
+    L->e0 = -1 / (exp(L->alpha * te) * sin(L->wg * te));
+}
+
+static double lf_value(const LF *L, double t) {
+    if (t < L->te) return L->e0 * exp(L->alpha * t) * sin(L->wg * t);
+    return -(1 / (L->eps * L->ta)) * (exp(-L->eps * (t - L->te)) - exp(-L->eps * (1 - L->te)));
+}
+
 typedef struct { uint64_t s; } Rng;
 static double rng_uniform(Rng *r) { /* xorshift64*, [-1, 1) */
     r->s ^= r->s >> 12; r->s ^= r->s << 25; r->s ^= r->s >> 27;
@@ -116,6 +171,7 @@ int ipr_render(const Plan *p, const ipr_voice *v, int fs, float gain, ipr_float_
     double ret_ms = T(RET_MS), hfn = T(HFN), hf_prev = 0;
     /* voice spectral balance: tame the low end, lift the 1-3 kHz presence region */
     double eq_gain = T(EQ_GAIN), noise_gain = T(NOISE_GAIN), flutter = T(FLUTTER);
+    int use_lf = T(LF_ON) > 0.5; double lf_gain = T(LF_GAIN); LF lf; memset(&lf, 0, sizeof lf); lf.rd = -1;
     Biquad eq_lo, eq_mid;
     memset(&eq_lo, 0, sizeof eq_lo); memset(&eq_mid, 0, sizeof eq_mid);
     bq_lowshelf(&eq_lo, T(EQ_LO_F), T(EQ_LO_DB), fs);
@@ -167,7 +223,16 @@ int ipr_render(const Plan *p, const ipr_voice *v, int fs, float gain, ipr_float_
         if (oqc > 0.95) oqc = 0.95;
         double g = 0;
         int open = phase < oqc;
-        if (open) {
+        if (use_lf) {
+            double rd = T(RD_BASE) + T(RD_SLOPE) * (oq - 0.55) - 0.6 * creak;
+            if (fabs(rd - lf.rd) > 0.02 || !lf.ok) lf_setup(&lf, rd);
+            if (lf.ok) {
+                g = lf_value(&lf, phase) * lf_gain;
+                open = phase < lf.te;
+            }
+        }
+        if (use_lf && lf.ok) {
+        } else if (open) {
             double x = phase / oqc;
             g = (2 * x - 3 * x * x) * 3.0 / sqrt(oqc);
         } else if (ret_ms > 0) {

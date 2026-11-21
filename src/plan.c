@@ -17,7 +17,7 @@ static const float VF[7][3][2][3] = {
     /* mid */        {{{520,1950,2600},{520,1580,2300}}, {{520,1450,2450},{520,1250,2300}}, {{520,1230,2450},{520, 860,2400}}},
     /* close-mid */  {{{440,2150,2700},{440,1650,2250}}, {{450,1500,2450},{450,1300,2250}}, {{450,1250,2450},{460, 820,2350}}},
     /* near-close */ {{{390,2000,2650},{390,1700,2200}}, {{400,1550,2450},{400,1350,2250}}, {{400,1280,2400},{410, 880,2300}}},
-    /* close */      {{{280,2250,2950},{280,1850,2150}}, {{310,1600,2450},{310,1450,2250}}, {{310,1300,2400},{300, 750,2300}}},
+    /* close */      {{{280,2250,2950},{280,1850,2150}}, {{310,1600,2450},{310,1450,2250}}, {{310,1300,2400},{310, 820,2250}}},
 };
 
 #ifndef B3K
@@ -184,7 +184,7 @@ static void seg_target(const Seg *s, Formants *o) {
             else if (p == P_ALVEOLAR || p == P_DENTAL) { o->F[1] = T(N_F2); o->F[2] = 2650; }
             else if (p == P_RETROFLEX) { o->F[1] = 1500; o->F[2] = 2000; }
             else if (p == P_PALATAL || p == P_ALVPAL || p == P_POSTALV) { o->F[1] = 2100; o->F[2] = 2900; }
-            else if (p == P_VELAR) { o->F[1] = 1750; o->F[2] = 2200; }
+            else if (p == P_VELAR) { o->F[1] = 1900; o->F[2] = 2150; }
             else if (p == P_UVULAR) { o->F[1] = 1200; o->F[2] = 2400; }
             else if (p == P_LABVELAR) { o->F[1] = 1000; o->F[2] = 2200; }
             o->B[1] = 150; o->B[2] = 200;
@@ -235,7 +235,7 @@ static void coartic(const Seg *c, const Formants *own, const Formants *v, Forman
     *o = *own;
     if (c->kind != K_CONS) return;
     if (is_obstruent(c)) k = LOCUS[c->place][3];
-    else if (c->manner == M_NASAL) k = (c->place == P_VELAR) ? 0.6f : T(K_NASAL);
+    else if (c->manner == M_NASAL) k = (c->place == P_VELAR) ? T(K_NG) : T(K_NASAL);
     else if (c->manner == M_TRILL || c->manner == M_TAP) k = 0.35f;
     else k = 0.12f; /* approximants keep their own target */
     k = clampf(k * T(K_SCALE), 0, 1);
@@ -370,7 +370,7 @@ static float cons_duration(const Seg *s) {
         if (s->place == P_ALVEOLAR || s->place == P_RETROFLEX) return T(D_RHO);
         return T(D_APPROX);
     case M_FRIC: case M_LATFRIC:
-        if (s->place == P_GLOTTAL) return 58;
+        if (s->place == P_GLOTTAL) return T(D_H);
         if (s->sibilant) return T(D_FRIC) * (s->voiced ? 78 : 98);
         return T(D_FRIC) * (s->voiced ? 68 : 88);
     }
@@ -754,6 +754,7 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
             float u = 0;
             if (tt <= a->t) u = 0;
             else if (b->t > a->t) u = clampf((tt - a->t) / (b->t - a->t), 0, 1);
+            if (T(CURVE) > 0) u = lerp(u, u * u * (3 - 2 * u), T(CURVE)); /* S-shaped movement */
             for (int k = 0; k < 5; k++) {
                 F[fi].F[k] = lerp(a->f.F[k], b->f.F[k], u);
                 F[fi].B[k] = lerp(a->f.B[k], b->f.B[k], u);
@@ -839,7 +840,7 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
                     if (s->voiced) { f->breath = 0.8f; f->oq = 0.8f; }
                     break;
                 }
-                set_spec(f, sp, amp * (s->voiced ? T(VFRIC_NOISE) : 1.0f) * (0.3f + 0.7f * e), fscale > 1 ? sqrtf(fscale) : 1, shift);
+                set_spec(f, sp, amp * (s->voiced ? T(VFRIC_NOISE) * (s->sibilant ? T(VSIB_BOOST) : 1.0f) : 1.0f) * (0.3f + 0.7f * e), fscale > 1 ? sqrtf(fscale) : 1, shift);
                 if (s->voiced) { f->av = T(VFRIC_AV); }
                 if (p == P_PHARYNGEAL || p == P_EPIGLOTTAL) { f->ah = s->voiced ? 0.15f : 0.45f; if (s->voiced) f->creak = fmaxf(f->creak, 0.35f); f->av = s->voiced ? 0.65f : 0; }
                 if (p == P_LABVELAR) f->ah = 0.4f;

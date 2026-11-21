@@ -42,7 +42,7 @@ static void voice_male(ipr_voice *v) {
     for (int i = 0; i < 5; i++) v->formant_shift[i] = 1.0f;
     v->bandwidth_scale = 1.0f; v->open_quotient = 0.55f; v->spectral_tilt = 0.25f;
     v->breathiness = 0.04f; v->jitter = 0.006f; v->shimmer = 0.03f;
-    v->vibrato_depth = 0.06f; v->vibrato_rate = 5.0f;
+    v->vibrato_depth = 0.0f; v->vibrato_rate = 5.0f;
     v->speed = 1.0f; v->volume = 1.0f; v->frication_gain = 1.0f;
 }
 static void voice_female(ipr_voice *v) {
@@ -54,7 +54,7 @@ static void voice_female(ipr_voice *v) {
     v->formant_shift[3] = 1.05f; v->formant_shift[4] = 1.05f;
     v->bandwidth_scale = 1.1f; v->open_quotient = 0.65f; v->spectral_tilt = 0.35f;
     v->breathiness = 0.09f; v->jitter = 0.005f;
-    v->vibrato_depth = 0.08f;
+    v->vibrato_depth = 0.0f;
 }
 
 typedef struct { const char *name; void (*fn)(ipr_voice *); } Builtin;
