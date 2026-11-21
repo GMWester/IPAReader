@@ -50,6 +50,28 @@ static double band_run(Band *r, double x) {
     return z;
 }
 
+typedef struct { double b0, b1, b2, a1, a2, x1, x2, y1, y2; } Biquad;
+/* RBJ cookbook filters */
+static void bq_lowshelf(Biquad *q, double f, double gain_db, double fs) {
+    double A = pow(10, gain_db / 40), w = 2 * M_PI * f / fs, c = cos(w), sn = sin(w);
+    double al = sn / 2 * sqrt(2.0), sa = 2 * sqrt(A) * al;
+    double a0 = (A + 1) + (A - 1) * c + sa;
+    q->b0 = A * ((A + 1) - (A - 1) * c + sa) / a0; q->b1 = 2 * A * ((A - 1) - (A + 1) * c) / a0;
+    q->b2 = A * ((A + 1) - (A - 1) * c - sa) / a0; q->a1 = -2 * ((A - 1) + (A + 1) * c) / a0;
+    q->a2 = ((A + 1) + (A - 1) * c - sa) / a0;
+}
+static void bq_peak(Biquad *q, double f, double Q, double gain_db, double fs) {
+    double A = pow(10, gain_db / 40), w = 2 * M_PI * f / fs, c = cos(w), al = sin(w) / (2 * Q);
+    double a0 = 1 + al / A;
+    q->b0 = (1 + al * A) / a0; q->b1 = -2 * c / a0; q->b2 = (1 - al * A) / a0;
+    q->a1 = -2 * c / a0; q->a2 = (1 - al / A) / a0;
+}
+static double bq_run(Biquad *q, double x) {
+    double y = q->b0 * x + q->b1 * q->x1 + q->b2 * q->x2 - q->a1 * q->y1 - q->a2 * q->y2;
+    q->x2 = q->x1; q->x1 = x; q->y2 = q->y1; q->y1 = y;
+    return y;
+}
+
 typedef struct { uint64_t s; } Rng;
 static double rng_uniform(Rng *r) { /* xorshift64*, [-1, 1) */
     r->s ^= r->s >> 12; r->s ^= r->s << 25; r->s ^= r->s >> 27;
@@ -92,6 +114,12 @@ int ipr_render(const Plan *p, const ipr_voice *v, int fs, float gain, ipr_float_
     ipr_tune_init();
     double rad_coef = T(RAD);
     double ret_ms = T(RET_MS), hfn = T(HFN), hf_prev = 0;
+    /* voice spectral balance: tame the low end, lift the 1-3 kHz presence region */
+    double eq_gain = T(EQ_GAIN), noise_gain = T(NOISE_GAIN), flutter = T(FLUTTER);
+    Biquad eq_lo, eq_mid;
+    memset(&eq_lo, 0, sizeof eq_lo); memset(&eq_mid, 0, sizeof eq_mid);
+    bq_lowshelf(&eq_lo, T(EQ_LO_F), T(EQ_LO_DB), fs);
+    bq_peak(&eq_mid, T(EQ_MID_F), 0.7, T(EQ_MID_DB), fs);
     double pulse_scale = 1.0;
 
     for (size_t n = 0; n < nsamp; n++) {
@@ -117,7 +145,10 @@ int ipr_render(const Plan *p, const ipr_voice *v, int fs, float gain, ipr_float_
         /* ---- glottal source ---- */
         vib_ph += v->vibrato_rate / fs;
         if (vib_ph >= 1) vib_ph -= 1;
-        double f0v = f0 * pow(2.0, v->vibrato_depth * sin(2 * M_PI * vib_ph) / 12.0);
+        double tsec = (double)n / fs;
+        /* flutter: slow, irregular pitch wander (sum of incommensurate sines) */
+        double fl = flutter * (sin(2 * M_PI * 12.7 * tsec) + sin(2 * M_PI * 7.1 * tsec) + sin(2 * M_PI * 4.7 * tsec)) / 3.0;
+        double f0v = f0 * pow(2.0, (v->vibrato_depth * sin(2 * M_PI * vib_ph) + fl) / 12.0);
         phase += period_f0 / fs;
         if (phase >= 1.0) {
             phase -= 1.0;
@@ -128,8 +159,8 @@ int ipr_render(const Plan *p, const ipr_voice *v, int fs, float gain, ipr_float_
             period_f0 = fc;
             amp_jit = 1 + v->shimmer * rng_uniform(&rng);
             if (creak > 0.01) amp_jit *= 1 - 0.4 * creak * fabs(rng_uniform(&rng));
-            /* keep pulse energy roughly independent of f0 & open quotient */
-            pulse_scale = 1.0;
+            /* keep loudness roughly independent of f0 (higher voices have more pulses per second) */
+            pulse_scale = pow(120.0 / fc, 0.7);
         }
         double oqc = oq - 0.25 * creak;
         if (oqc < 0.2) oqc = 0.2;
@@ -163,6 +194,7 @@ int ipr_render(const Plan *p, const ipr_voice *v, int fs, float gain, ipr_float_
         /* lip radiation: first difference (+6 dB/octave) */
         double cascade = x - rad_coef * rad_prev;
         rad_prev = x;
+        cascade = bq_run(&eq_mid, bq_run(&eq_lo, cascade));
 
         /* ---- parallel frication branch ---- */
         double fn = rng_gauss(&rng);
@@ -180,7 +212,7 @@ int ipr_render(const Plan *p, const ipr_voice *v, int fs, float gain, ipr_float_
             par_out += IP(bypass) * fn * af;
         }
 #undef IP
-        double out = cascade * CASC_GAIN + par_out * PAR_GAIN;
+        double out = (cascade * CASC_GAIN + par_out * PAR_GAIN * noise_gain) * eq_gain;
         /* DC blocker */
         double y = out - hp_x + hp_a * hp_y;
         hp_x = out; hp_y = y;
