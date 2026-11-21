@@ -690,6 +690,15 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
                 continue;
             }
             ti = fminf(ti, s->dur * 0.45f); to = fminf(to, s->dur * 0.45f);
+            if (pv && pv->kind == K_CONS && (pv->palatalized || pv->labialized) && T(SEC_GLIDE) > 0) {
+                /* secondary articulation released as a short glide into the vowel (tʲa ~ tja, kʷa ~ kwa) */
+                Formants g = own[i];
+                float w = T(SEC_GLIDE);
+                if (pv->palatalized) { g.F[0] = lerp(g.F[0], 280, w); g.F[1] = lerp(g.F[1], 2150, w); g.F[2] = lerp(g.F[2], 2950, w); }
+                if (pv->labialized) { g.F[0] = lerp(g.F[0], 300, w); g.F[1] = lerp(g.F[1], 700, w); g.F[2] = lerp(g.F[2], 2200, w); }
+                if (add_anchor(&A, t0 + 2, &g, nas)) goto oom;
+                ti = fmaxf(ti, fminf(T(SEC_GLIDE_MS), s->dur * 0.5f));
+            }
             if (add_anchor(&A, t0 + ti, &own[i], nas)) goto oom;
             if (add_anchor(&A, t1 - to, &own[i], nas)) goto oom;
             continue;
@@ -750,8 +759,9 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
                 F[fi].B[k] = lerp(a->f.B[k], b->f.B[k], u);
             }
             float nas = lerp(a->nas, b->nas, u);
-            F[fi].fnz = 270 + 150 * nas;
-            F[fi].B[0] *= 1 + 0.6f * nas;
+            F[fi].fnz = 270 + T(NASV_Z) * nas;
+            F[fi].B[0] *= 1 + T(NASV_B1) * nas;
+            F[fi].F[0] = lerp(F[fi].F[0], 500.0f, T(NASV_F1) * nas);
         }
     }
 
@@ -833,7 +843,7 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
                 if (s->voiced) { f->av = T(VFRIC_AV); }
                 if (p == P_PHARYNGEAL || p == P_EPIGLOTTAL) { f->ah = s->voiced ? 0.15f : 0.45f; if (s->voiced) f->creak = fmaxf(f->creak, 0.35f); f->av = s->voiced ? 0.65f : 0; }
                 if (p == P_LABVELAR) f->ah = 0.4f;
-                if (p == P_UVULAR && s->voiced) f->av = 0.6f;
+                if (p == P_UVULAR && s->voiced) { f->av = T(UVU_AV); f->af *= db2lin(T(UVU_DB)); }
                 break;
             }
             default: { /* stop-like */
@@ -1029,6 +1039,23 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
             if (tt > a->t && b->t > a->t) u = clampf((tt - a->t) / (b->t - a->t), 0, 1);
             /* interpolate in log domain */
             F[fi].f0 = expf(lerp(logf(a->f0), logf(b->f0), u));
+        }
+    }
+
+    /* ---- natural phrase endings: loudness decay and a little creak at the end of statements ---- */
+    if (T(FINAL_CREAK) > 0 || T(FINAL_DECAY) > 0) {
+        for (int i = 0; i < N; i++) {
+            if (S[i].kind == K_PAUSE || !S[i].nucleus) continue;
+            int j = i + 1;
+            while (j < N && S[j].kind != K_PAUSE && !S[j].nucleus) j++;
+            int last = (j >= N) || (S[j].kind == K_PAUSE && S[j].pause_kind >= PZ_MAJOR && S[j].pause_kind != PZ_QUESTION && S[j].pause_kind != PZ_COMMA);
+            if (!last) continue;
+            int a0 = (int)S[i].t0, a1 = (int)(S[j < N ? j - 1 : N - 1].t0 + S[j < N ? j - 1 : N - 1].dur);
+            for (int fi = a0; fi < a1 && fi < nf; fi++) {
+                float u = (float)(fi - a0) / (float)((a1 - a0) > 1 ? (a1 - a0) : 1);
+                F[fi].av *= 1.0f - T(FINAL_DECAY) * u;
+                if (u > 0.5f && !S[i].ntone) F[fi].creak = fmaxf(F[fi].creak, T(FINAL_CREAK) * (u - 0.5f) * 2.0f);
+            }
         }
     }
 

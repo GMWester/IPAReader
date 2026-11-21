@@ -91,6 +91,7 @@ int ipr_render(const Plan *p, const ipr_voice *v, int fs, float gain, ipr_float_
     int pending_imp_frame = -1;
     ipr_tune_init();
     double rad_coef = T(RAD);
+    double ret_ms = T(RET_MS), hfn = T(HFN), hf_prev = 0;
     double pulse_scale = 1.0;
 
     for (size_t n = 0; n < nsamp; n++) {
@@ -138,6 +139,10 @@ int ipr_render(const Plan *p, const ipr_voice *v, int fs, float gain, ipr_float_
         if (open) {
             double x = phase / oqc;
             g = (2 * x - 3 * x * x) * 3.0 / sqrt(oqc);
+        } else if (ret_ms > 0) {
+            /* return phase: the folds close gradually rather than instantly (less buzzy) */
+            double ret = ret_ms * period_f0 / 1000.0;          /* as a fraction of the period */
+            g = -3.0 / sqrt(oqc) * exp(-(phase - oqc) / ret);
         }
         /* spectral tilt: one-pole low-pass */
         double ta = 0.85 * (tilt < 0 ? 0 : tilt > 1 ? 1 : tilt);
@@ -149,7 +154,9 @@ int ipr_render(const Plan *p, const ipr_voice *v, int fs, float gain, ipr_float_
         noise_lp = 0.6 * noise + 0.4 * noise_lp;
         double asp = noise_lp * (ah * 3.5 + breath * av * (open ? 0.4 : 0.12));
 
-        double src = voice + asp;
+        /* pulse-synchronous high-frequency breath noise, as in natural voices */
+        double hf = (noise - hf_prev) * 0.5; hf_prev = noise;
+        double src = voice + asp + hf * hfn * av * (open ? 1.0 : 0.3);
         double x = reson_run(&np, src);
         x = anti_run(&nz, x);
         for (int k = 0; k < NCASC; k++) x = reson_run(&casc[k], x);

@@ -140,7 +140,7 @@ speed = 1.05
 1. **Parse.** The UTF-8 input is decoded. Precomposed letters (ã, é, ǎ…) and ligatures (ʧ, ʦ…) are split, and every base symbol is looked up in a feature table. Combining diacritics and modifier letters then edit the segment's features: nasalization, voicing, aspiration, secondary articulation, advanced/retracted, raised/lowered, rounding, length, syllabicity, tone and so on. Tie bars create affricates, doubly articulated stops, and prenasalized stops.
 2. **Prosody.** Syllables are built from vowels and syllabic consonants. The input's stress marks, length marks, tone letters/diacritics/digits and punctuation set the duration and the pitch contour: declination, stress accents, statement fall, question rise, and Chao tone levels 1–5.
 3. **Acoustics.** Each segment becomes formant targets and source settings. Vowel formants are interpolated continuously over height × backness × rounding, so diacritic-shifted vowels land between the cardinal vowels. Consonants get place-dependent loci, coarticulated with neighbouring vowels; noise spectra per place; bursts, aspiration (VOT), voice bars, nasal murmur with a pole–zero pair, lateral and rhotic formants, trill pulsing, ejective glottal holds, implosive voicing, and click transients.
-4. **Synthesis.** A glottal pulse source with jitter, shimmer, vibrato, breathiness and creak drives a cascade of 7 formant resonators plus a nasal pole/zero pair. Frication goes through a parallel bank of band-pass resonators. Parameters are updated every millisecond and interpolated per sample.
+4. **Synthesis.** A glottal pulse source drives the vocal tract. It has a gradual closing (return) phase, pulse-synchronous breath noise, jitter, shimmer, vibrato, and creak. That source drives a cascade of 7 formant resonators plus a nasal pole/zero pair. Frication goes through a parallel bank of band-pass resonators. Parameters are updated every millisecond and interpolated per sample.
 
 ## Supported IPA characters
 
@@ -567,6 +567,20 @@ A superscript letter after a sound is pronounced as a short release of that soun
 
 Contour tones are written as sequences of tone letters (˧˥, ˨˩˦, ˥˩) or digits (ma⁵¹, ma51). Tone letters A708–A716 (dotted / left-stem forms) are read as the same five levels.
 <!-- SYMBOLS:END -->
+
+## Measuring intelligibility
+
+`tools/eval/asr_eval.py` synthesizes 102 English and 161 sentences in 13 other languages from IPA. It has them transcribed by Whisper (running locally via sherpa-onnx) and reports word and character error rates. Setup instructions are at the top of the script. Recent results:
+
+| Voice | English WER | 13-language CER |
+|---|---|---|
+| male | ~9–10% | ~18% |
+| female | ~9–11% | ~23% |
+| espeak-ng reading the *text* (reference) | 25% | 27% |
+
+Most of the multilingual test IPA comes from espeak-ng's text-to-IPA, so a few transcriptions are themselves imperfect. Whisper is also weak on short Arabic, Hindi and Mandarin sentences. Short sentences in those languages swing a lot between runs.
+
+Internal acoustic constants are listed in `src/tune.h`. You can override them for experiments with the environment variable `IPR_TUNE="NAME=value,NAME=value"`.
 
 ## Limitations
 
