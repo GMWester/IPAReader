@@ -574,8 +574,8 @@ Contour tones are written as sequences of tone letters (˧˥, ˨˩˦, ˥˩) or d
 
 | Voice | English WER | 13-language CER |
 |---|---|---|
-| male | ~9–10% | ~18% |
-| female | ~9–11% | ~23% |
+| male | ~9–10% | ~19% |
+| female | ~10–11% | ~22% |
 | espeak-ng reading the *text* (reference) | 25% | 27% |
 
 Most of the multilingual test IPA comes from espeak-ng's text-to-IPA, so a few transcriptions are themselves imperfect. Whisper is also weak on short Arabic, Hindi and Mandarin sentences. Short sentences in those languages swing a lot between runs.

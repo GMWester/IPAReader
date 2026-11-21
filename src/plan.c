@@ -170,7 +170,10 @@ static int is_nucleus(const Seg *s) {
 /* own formant target of a segment (before coarticulation) */
 static void seg_target(const Seg *s, Formants *o) {
     if (s->kind == K_VOWEL) {
-        vowel_formants(s->height, s->back, s->round, s->rhotic, o);
+        float h = s->height;
+        /* the target of a diphthong glide (aɪ, eɪ, aʊ) is more peripheral than the plain vowel */
+        if (s->syllabic == -1 && h >= 0.75f) h += T(GLIDE_RAISE) * (1.0f - h);
+        vowel_formants(h, s->back, s->round, s->rhotic, o);
     } else {
         const float *L = LOCUS[s->place];
         o->F[0] = L[0]; o->F[1] = L[1]; o->F[2] = L[2];
@@ -703,6 +706,13 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
                 ti = fmaxf(ti, fminf(T(SEC_GLIDE_MS), s->dur * 0.5f));
             }
             if (add_anchor(&A, t0 + ti, &own[i], nas)) goto oom;
+            if (T(VDRIFT) > 0 && s->dur > 110 && !(nx && nx->kind == K_VOWEL)) {
+                /* long vowels relax slightly toward the centre near their end */
+                Formants e = own[i];
+                for (int k = 0; k < 3; k++) e.F[k] = lerp(e.F[k], schwa.F[k], T(VDRIFT));
+                if (add_anchor(&A, t0 + s->dur * 0.45f, &own[i], nas)) goto oom;
+                if (add_anchor(&A, t1 - to, &e, nas)) goto oom;
+            } else
             if (add_anchor(&A, t1 - to, &own[i], nas)) goto oom;
             continue;
         }
@@ -973,6 +983,7 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
             float tend = (j > i) ? S[j - 1].t0 + S[j - 1].dur : tstart + 1;
             float plen = fmaxf(tend - tstart, 1);
             float step = 0;
+            int nacc = 0;
             int idx = 0;
             int last_nuc = -1;
             for (int k = i; k < j; k++) if (S[k].kind != K_PAUSE && S[k].nucleus && syl_nuc[S[k].syl] == k) last_nuc = k;
@@ -1013,6 +1024,10 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
                     float acc = 0;
                     if (st == 2) acc = T(ACC1) * R; else if (st == 1) acc = 0.44f * T(ACC1) * R;
                     if (ptype == PZ_EXCLAIM) acc *= 1.4f;
+                    if (st == 2) {   /* first accent highest, later ones step down */
+                        acc *= nacc == 0 ? 1.0f + T(ACC_FIRST) : powf(1.0f - T(ACC_DOWN), (float)nacc);
+                        nacc++;
+                    }
                     if (!intonation) decl = 0;
                     float s0 = decl + acc * T(ACC_START) + step, s1 = decl + acc + step, s2 = decl + acc * 0.6f + step;
                     if (intonation && k == last_nuc) {
