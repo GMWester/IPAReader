@@ -786,7 +786,7 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
             case M_NASAL: {
                 f->av = s->voiced ? T(NASAL_AV) : 0; if (!s->voiced) f->ah = 0.35f;
                 f->fnp = 270; f->bnp = 100;
-                f->fnz = NASAL_ZERO[p]; f->bnz = T(NASAL_BZ);
+                f->fnz = NASAL_ZERO[p] * (p == P_ALVEOLAR || p == P_DENTAL ? T(N_ZERO) : p == P_VELAR ? T(NG_ZERO) : p == P_BILABIAL ? T(M_ZERO) : 1.0f); f->bnz = T(NASAL_BZ);
                 break;
             }
             case M_APPROX:
@@ -818,6 +818,7 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
                 const Spec *sp = s->manner == M_LATFRIC ? &LATFRIC_SPEC : &FRIC_SPEC[p];
                 float shift = 1;
                 if (p == P_VELAR) shift = clampf(vF2 * 1.1f, 1200, 2900) / 1800.0f;
+                if (p == P_POSTALV) shift = T(SH_SHIFT);
                 float amp = v->frication_gain * db2lin(T(FRIC_DB) + (s->sibilant ? T(SIB_DB) : T(NONSIB_DB)));
                 if (!s->sibilant && s->manner == M_FRIC && (p == P_ALVEOLAR || p == P_POSTALV || p == P_RETROFLEX || p == P_ALVPAL)) amp *= 0.35f;
                 /* onset/offset ramps */

@@ -17,7 +17,8 @@
     X(ACC1, 3.2) X(DECL, 1.2) X(FINAL_FALL, 3.5) \
     X(RAD, 0.8) X(SM_F, 9) X(SM_AV, 7) X(H_AH, 0.6) X(VOWEL_AV_H, 0.5) \
     X(MICRO_VL, 0.08) X(MICRO_VD, 0.05) X(STRESS_AMP, 0.15) \
-    X(K_NASAL, 0.15) X(M_F2, 900) X(N_F2, 1700) X(VAFF_NOISE, 0.9)
+    X(K_NASAL, 0.15) X(M_F2, 900) X(N_F2, 1700) X(VAFF_NOISE, 0.9) \
+    X(N_ZERO, 1.3) X(M_ZERO, 1.0) X(NG_ZERO, 1.2) X(SH_SHIFT, 1.0)
 
 enum {
 #define X(n, d) TU_##n,
