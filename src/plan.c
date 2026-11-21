@@ -184,13 +184,14 @@ static void seg_target(const Seg *s, Formants *o) {
         case M_NASAL:
             o->F[0] = 250; o->B[0] = 80;
             if (p == P_BILABIAL || p == P_LABIODENTAL) { o->F[1] = T(M_F2); o->F[2] = 2200; }
-            else if (p == P_ALVEOLAR || p == P_DENTAL) { o->F[1] = T(N_F2); o->F[2] = 2650; }
+            else if (p == P_ALVEOLAR || p == P_DENTAL) { o->F[1] = T(N_F2); o->F[2] = T(N_F3); }
             else if (p == P_RETROFLEX) { o->F[1] = 1500; o->F[2] = 2000; }
             else if (p == P_PALATAL || p == P_ALVPAL || p == P_POSTALV) { o->F[1] = 2100; o->F[2] = 2900; }
             else if (p == P_VELAR) { o->F[1] = 1900; o->F[2] = 2150; }
             else if (p == P_UVULAR) { o->F[1] = 1200; o->F[2] = 2400; }
             else if (p == P_LABVELAR) { o->F[1] = 1000; o->F[2] = 2200; }
             o->B[1] = 150; o->B[2] = 200;
+            if (p == P_VELAR || p == P_UVULAR) { o->B[1] *= T(NG_BW); o->B[2] *= T(NG_BW); }   /* darker murmur */
             break;
         case M_LATAPPROX: case M_LATTAP:
             o->F[0] = 360; o->B[0] = 100; o->B[1] = 150; o->B[2] = 250;
@@ -252,6 +253,11 @@ static void coartic(const Seg *c, const Formants *own, const Formants *v, Forman
     o->F[3] = own->F[3] + 0.8f * (v->F[3] - own->F[3]);
     o->F[4] = v->F[4];
     if (c->place == P_GLOTTAL) for (int i = 0; i < 5; i++) o->B[i] = v->B[i] * 1.3f;
+    /* velar pinch: F2 and F3 come together at velar closures (k, ɡ, ŋ) */
+    if (c->place == P_VELAR && T(PINCH) > 0 && (is_obstruent(c) || c->manner == M_NASAL)) {
+        float mid = 0.5f * (o->F[1] + o->F[2]);
+        if (o->F[2] - o->F[1] > T(PINCH)) { o->F[1] = mid - 0.5f * T(PINCH); o->F[2] = mid + 0.5f * T(PINCH); }
+    }
 }
 
 /* ------------------------------------------------------------------ */
