@@ -16,12 +16,12 @@ else
   SHFLAGS = -shared -Wl,-soname,$(SHLIB)
 endif
 
-SRC = src/parse.c src/plan.c src/synth.c src/api.c
+SRC = src/parse.c src/plan.c src/synth.c src/api.c src/tune.c
 OBJ = $(SRC:src/%.c=build/%.o)
 
 all: build/$(SHLIB) build/libipareader.a build/ipareader
 
-build/%.o: src/%.c src/internal.h include/ipareader.h | build
+build/%.o: src/%.c src/internal.h src/tune.h include/ipareader.h | build
 	$(CC) $(CFLAGS) -c $< -o $@
 
 build:

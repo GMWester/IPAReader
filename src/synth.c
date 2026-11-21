@@ -1,5 +1,6 @@
 /* Formant synthesizer: glottal source + cascade vocal tract + parallel frication branch. */
 #include "internal.h"
+#include "tune.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -88,6 +89,8 @@ int ipr_render(const Plan *p, const ipr_voice *v, int fs, float gain, ipr_float_
     size_t nsamp = (size_t)(total_ms * fs / 1000.0);
     double hp_a = exp(-2 * M_PI * 45.0 / fs);
     int pending_imp_frame = -1;
+    ipr_tune_init();
+    double rad_coef = T(RAD);
     double pulse_scale = 1.0;
 
     for (size_t n = 0; n < nsamp; n++) {
@@ -151,7 +154,7 @@ int ipr_render(const Plan *p, const ipr_voice *v, int fs, float gain, ipr_float_
         x = anti_run(&nz, x);
         for (int k = 0; k < NCASC; k++) x = reson_run(&casc[k], x);
         /* lip radiation: first difference (+6 dB/octave) */
-        double cascade = x - RAD_COEF * rad_prev;
+        double cascade = x - rad_coef * rad_prev;
         rad_prev = x;
 
         /* ---- parallel frication branch ---- */

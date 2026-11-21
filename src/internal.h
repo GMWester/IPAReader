@@ -65,6 +65,8 @@ typedef struct Seg {
     int nucleus;        /* computed: syllable nucleus */
     int syl;            /* syllable index */
     int unknown;
+    int citation;       /* spoken alone: use citation-form durations */
+    int final_release;  /* plosive released into silence */
     /* timing (ms), computed in plan */
     float dur;
     float t0;

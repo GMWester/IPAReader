@@ -48,8 +48,10 @@ static void voice_male(ipr_voice *v) {
 static void voice_female(ipr_voice *v) {
     voice_male(v);
     strcpy(v->name, "female");
-    v->pitch = 200; v->pitch_range = 1.15f; v->formant_scale = 1.13f;
-    v->formant_shift[0] = 1.05f;
+    v->pitch = 200; v->pitch_range = 1.15f; v->formant_scale = 1.0f;
+    /* shorter vocal tract: formants raised non-uniformly, as in real voices */
+    v->formant_shift[0] = 1.10f; v->formant_shift[1] = 1.07f; v->formant_shift[2] = 1.05f;
+    v->formant_shift[3] = 1.05f; v->formant_shift[4] = 1.05f;
     v->bandwidth_scale = 1.1f; v->open_quotient = 0.65f; v->spectral_tilt = 0.35f;
     v->breathiness = 0.09f; v->jitter = 0.005f;
     v->vibrato_depth = 0.08f;

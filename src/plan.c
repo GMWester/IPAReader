@@ -1,5 +1,6 @@
 /* Segments -> timed synthesis parameter frames (1 frame = 1 ms). */
 #include "internal.h"
+#include "tune.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,14 +9,26 @@
 /* Vowel formants: [height 0..6 open->close][front, central, back][unrounded, rounded][F1..F3] */
 /* ------------------------------------------------------------------ */
 static const float VF[7][3][2][3] = {
-    /* open */       {{{800,1650,2600},{770,1450,2400}}, {{780,1350,2500},{740,1200,2400}}, {{750,1120,2500},{700,1000,2450}}},
-    /* near-open */  {{{690,1700,2550},{680,1500,2400}}, {{690,1350,2500},{670,1200,2400}}, {{690,1150,2500},{640, 950,2450}}},
-    /* open-mid */   {{{600,1850,2550},{590,1550,2350}}, {{590,1420,2500},{580,1220,2380}}, {{600,1180,2500},{570, 880,2450}}},
-    /* mid */        {{{500,1950,2600},{490,1600,2300}}, {{500,1450,2500},{490,1230,2350}}, {{510,1200,2480},{480, 820,2400}}},
-    /* close-mid */  {{{410,2080,2700},{400,1650,2250}}, {{410,1480,2500},{400,1250,2320}}, {{430,1220,2450},{400, 760,2380}}},
-    /* near-close */ {{{330,2180,2800},{330,1720,2200}}, {{340,1520,2500},{330,1280,2300}}, {{350,1240,2420},{330, 720,2320}}},
-    /* close */      {{{280,2280,2950},{280,1800,2150}}, {{300,1550,2500},{290,1300,2280}}, {{300,1260,2400},{290, 690,2280}}},
+    /* Typical realisations (male), cardinal-vowel geometry with near-close/near-open
+       vowels placed where they occur in real languages. */
+    /* open */       {{{800,1550,2550},{780,1400,2450}}, {{780,1300,2500},{760,1150,2400}}, {{760,1100,2500},{720,1020,2450}}},
+    /* near-open */  {{{680,1720,2450},{680,1450,2400}}, {{700,1350,2450},{690,1180,2400}}, {{700,1150,2500},{660, 960,2450}}},
+    /* open-mid */   {{{590,1820,2550},{590,1520,2350}}, {{600,1420,2450},{600,1200,2350}}, {{620,1200,2450},{590, 900,2450}}},
+    /* mid */        {{{520,1950,2600},{520,1580,2300}}, {{520,1450,2450},{520,1250,2300}}, {{520,1230,2450},{520, 860,2400}}},
+    /* close-mid */  {{{440,2150,2700},{440,1650,2250}}, {{450,1500,2450},{450,1300,2250}}, {{450,1250,2450},{460, 820,2350}}},
+    /* near-close */ {{{390,2000,2650},{390,1700,2200}}, {{400,1550,2450},{400,1350,2250}}, {{400,1280,2400},{410, 880,2300}}},
+    /* close */      {{{280,2250,2950},{280,1850,2150}}, {{310,1600,2450},{310,1450,2250}}, {{310,1300,2400},{300, 750,2300}}},
 };
+
+#ifndef B3K
+#define B3K 1.0f
+#endif
+#ifndef B4V
+#define B4V 250.0f
+#endif
+#ifndef B5V
+#define B5V 300.0f
+#endif
 
 static float clampf(float x, float a, float b) { return x < a ? a : (x > b ? b : x); }
 static float lerp(float a, float b, float t) { return a + (b - a) * t; }
@@ -52,11 +65,13 @@ static void vowel_formants(float h, float b, float r, float rh, Formants *o) {
     o->F[0] = clampf(o->F[0], 200, 1000);
     o->F[3] = 3500 + (1 - bc) * 150;
     o->F[4] = 4500;
+    o->F[0] = 500 + (o->F[0] - 500) * T(F1_EXPAND);
+    o->F[1] = 1500 + (o->F[1] - 1500) * T(F2_EXPAND);
     o->B[0] = 55 + 0.06f * (o->F[0] - 250);
     o->B[1] = 55 + 0.035f * o->F[1];
-    o->B[2] = 40 + 0.045f * o->F[2];
-    o->B[3] = 250;
-    o->B[4] = 300;
+    o->B[2] = B3K * (40 + 0.045f * o->F[2]);
+    o->B[3] = B4V;
+    o->B[4] = B5V;
 }
 
 /* consonant place loci F1, F2, F3 and coarticulation coefficient */
@@ -89,10 +104,10 @@ typedef struct { float f[4], bw[4], db[4]; float bypass_db; float level_db; } Sp
 
 #define NONE -99.0f
 static const Spec FRIC_SPEC[P_COUNT] = {
-    /* BILABIAL */     {{1000, 3000, 0, 0}, {700, 1500, 1, 1}, {0, -10, NONE, NONE}, -6, -30},
-    /* LABIODENTAL */  {{6000, 1400, 3500, 0}, {2500, 800, 1500, 1}, {-2, -12, -8, NONE}, 0, -31},
+    /* BILABIAL */     {{1000, 3000, 0, 0}, {700, 1500, 1, 1}, {0, -10, NONE, NONE}, -6, -25},
+    /* LABIODENTAL */  {{1500, 3500, 6000, 0}, {1500, 2000, 2500, 1}, {-8, -6, -10, NONE}, 0, -33},
     /* LINGUOLABIAL */ {{5000, 2800, 0, 0}, {2500, 1500, 1, 1}, {-2, -10, NONE, NONE}, -2, -25},
-    /* DENTAL */       {{5500, 2800, 7500, 0}, {2000, 1500, 2000, 1}, {-2, -10, -4, NONE}, -3, -30},
+    /* DENTAL */       {{5000, 2800, 7500, 0}, {2500, 1500, 2000, 1}, {-4, -10, -6, NONE}, 0, -32},
     /* ALVEOLAR */     {{5300, 7500, 3300, 0}, {1000, 1800, 600, 1}, {0, -4, -18, NONE}, -30, -11},
     /* POSTALV */      {{2700, 4000, 6000, 0}, {450, 900, 1500, 1}, {0, -6, -14, NONE}, -30, -7},
     /* RETROFLEX */    {{2300, 3300, 5000, 0}, {400, 700, 1500, 1}, {0, -6, -16, NONE}, -30, -12},
@@ -108,11 +123,11 @@ static const Spec FRIC_SPEC[P_COUNT] = {
 };
 static const Spec LATFRIC_SPEC = {{3200, 5000, 1800, 0}, {800, 1500, 600, 1}, {0, -4, -14, NONE}, -20, -15};
 static const Spec BURST_SPEC[P_COUNT] = {
-    /* BILABIAL */     {{900, 2500, 0, 0}, {700, 1500, 1, 1}, {0, -10, NONE, NONE}, -6, -15},
+    /* BILABIAL */     {{900, 2500, 0, 0}, {700, 1500, 1, 1}, {0, -10, NONE, NONE}, -6, -10},
     /* LABIODENTAL */  {{1200, 4000, 0, 0}, {900, 2000, 1, 1}, {0, -8, NONE, NONE}, -4, -16},
     /* LINGUOLABIAL */ {{1500, 4000, 0, 0}, {900, 2000, 1, 1}, {0, -4, NONE, NONE}, -4, -12},
     /* DENTAL */       {{4000, 6500, 2800, 0}, {1500, 2000, 800, 1}, {0, -3, -8, NONE}, -12, -8},
-    /* ALVEOLAR */     {{4300, 6500, 3000, 0}, {1500, 2000, 800, 1}, {0, -4, -6, NONE}, -14, -7},
+    /* ALVEOLAR */     {{4300, 6500, 3000, 0}, {1500, 2000, 800, 1}, {0, -4, -6, NONE}, -14, -5},
     /* POSTALV */      {{3000, 4500, 0, 0}, {800, 1200, 1, 1}, {0, -5, NONE, NONE}, -20, -7},
     /* RETROFLEX */    {{2700, 3800, 0, 0}, {800, 1200, 1, 1}, {0, -6, NONE, NONE}, -20, -8},
     /* ALVPAL */       {{3300, 4600, 0, 0}, {800, 1200, 1, 1}, {0, -4, NONE, NONE}, -20, -7},
@@ -160,13 +175,13 @@ static void seg_target(const Seg *s, Formants *o) {
         const float *L = LOCUS[s->place];
         o->F[0] = L[0]; o->F[1] = L[1]; o->F[2] = L[2];
         o->F[3] = 3500; o->F[4] = 4500;
-        o->B[0] = 90; o->B[1] = 120; o->B[2] = 180; o->B[3] = 250; o->B[4] = 300;
+        o->B[0] = 90; o->B[1] = 120; o->B[2] = 180 * B3K; o->B[3] = B4V; o->B[4] = B5V;
         int p = s->place;
         switch (s->manner) {
         case M_NASAL:
             o->F[0] = 250; o->B[0] = 80;
-            if (p == P_BILABIAL || p == P_LABIODENTAL) { o->F[1] = 1100; o->F[2] = 2250; }
-            else if (p == P_ALVEOLAR || p == P_DENTAL) { o->F[1] = 1550; o->F[2] = 2600; }
+            if (p == P_BILABIAL || p == P_LABIODENTAL) { o->F[1] = T(M_F2); o->F[2] = 2200; }
+            else if (p == P_ALVEOLAR || p == P_DENTAL) { o->F[1] = T(N_F2); o->F[2] = 2650; }
             else if (p == P_RETROFLEX) { o->F[1] = 1500; o->F[2] = 2000; }
             else if (p == P_PALATAL || p == P_ALVPAL || p == P_POSTALV) { o->F[1] = 2100; o->F[2] = 2900; }
             else if (p == P_VELAR) { o->F[1] = 1750; o->F[2] = 2200; }
@@ -179,7 +194,7 @@ static void seg_target(const Seg *s, Formants *o) {
             if (p == P_RETROFLEX) { o->F[1] = 1300; o->F[2] = 1900; }
             else if (p == P_PALATAL || p == P_ALVPAL || p == P_POSTALV) { o->F[0] = 300; o->F[1] = 2050; o->F[2] = 2900; }
             else if (p == P_VELAR || p == P_UVULAR) { o->F[0] = 340; o->F[1] = 1150; o->F[2] = 2400; }
-            else { o->F[1] = 1250; o->F[2] = 2700; }
+            else { o->F[1] = 1450; o->F[2] = 2750; }
             break;
         case M_APPROX:
             o->B[0] = 70; o->B[1] = 110; o->B[2] = 180;
@@ -220,9 +235,10 @@ static void coartic(const Seg *c, const Formants *own, const Formants *v, Forman
     *o = *own;
     if (c->kind != K_CONS) return;
     if (is_obstruent(c)) k = LOCUS[c->place][3];
-    else if (c->manner == M_NASAL) k = (c->place == P_VELAR) ? 0.6f : 0.3f;
+    else if (c->manner == M_NASAL) k = (c->place == P_VELAR) ? 0.6f : T(K_NASAL);
     else if (c->manner == M_TRILL || c->manner == M_TAP) k = 0.35f;
     else k = 0.12f; /* approximants keep their own target */
+    k = clampf(k * T(K_SCALE), 0, 1);
     if (c->manner == M_FRIC && c->place == P_GLOTTAL) k = 1.0f;
     float k1 = is_obstruent(c) ? 0.25f : k * 0.5f;
     if (c->place == P_UVULAR || c->place == P_PHARYNGEAL || c->place == P_EPIGLOTTAL) k1 = 0.3f;
@@ -300,19 +316,20 @@ static int expand(const SegList *in, SegList *out) {
 /* ------------------------------------------------------------------ */
 
 typedef struct {
-    float closure, burst, vot, gap; /* stop phases (ms) */
+    float closure, burst, vot, gap, trail; /* stop phases (ms) */
 } StopTiming;
 
 static void stop_timing(const Seg *s, StopTiming *t) {
     memset(t, 0, sizeof *t);
     int pl = s->place;
-    t->burst = (pl == P_BILABIAL || pl == P_LABIODENTAL) ? 6 : (pl == P_VELAR || pl == P_UVULAR || pl == P_PALATAL) ? 14 : 9;
+    t->burst = (pl == P_BILABIAL || pl == P_LABIODENTAL) ? 8 : (pl == P_VELAR || pl == P_UVULAR || pl == P_PALATAL) ? 18 : 12;
     if (s->manner == M_AFFRICATE) t->burst = 4;
     if (s->manner == M_CLICK) t->burst = s->fric_lateral || pl == P_DENTAL ? 18 : 6;
     if (s->manner == M_IMPLOSIVE) t->burst = 4;
-    if (s->aspirated) t->vot = 60;
+    t->burst *= T(BURST_LEN);
+    if (s->aspirated) t->vot = T(VOT_ASP);
     else if (s->voiced) t->vot = 0;
-    else t->vot = 14;
+    else t->vot = T(VOT_UNASP);
     if (s->manner == M_AFFRICATE) {
         float f = s->fric_voiced ? 45 : 60;
         t->burst += f;
@@ -321,30 +338,41 @@ static void stop_timing(const Seg *s, StopTiming *t) {
     if (s->ejective) { t->vot = 0; t->gap = 45; t->burst *= 1.2f; }
     if (s->unreleased || s->nasal_release || s->lateral_release) { t->burst = 0; t->vot = 0; }
     if (s->place == P_GLOTTAL || s->place == P_EPIGLOTTAL) { if (s->place == P_GLOTTAL) t->burst = 0; t->vot = 0; }
+    /* a plosive released into silence keeps sounding briefly (release noise / voicing decay) */
+    if ((s->final_release || s->citation) && t->burst > 0 && !s->ejective) {
+        t->trail = s->citation ? (s->voiced ? 70 : 90) : (s->voiced ? 25 : 35);
+        if (s->aspirated) t->trail *= 0.4f;
+    }
+    if (s->citation && s->manner == M_CLICK) t->trail = 45;
 }
 
+static float cons_duration(const Seg *s);
 static float base_duration(const Seg *s) {
     if (s->kind == K_VOWEL) {
-        float d = 72 + 32 * (1 - clampf(s->height, 0, 1));
-        if (s->syllabic == -1) d *= 0.55f;
+        float d = T(V_BASE) + T(V_OPEN) * (1 - clampf(s->height, 0, 1));
+        if (s->syllabic == -1) d *= T(V_GLIDE);
         return d;
     }
+    return T(D_CONS) * cons_duration(s);
+}
+
+static float cons_duration(const Seg *s) {
     switch (s->manner) {
-    case M_PLOSIVE: return s->place == P_GLOTTAL ? 55 : (s->voiced ? 50 : 60);
+    case M_PLOSIVE: return s->place == P_GLOTTAL ? 55 : (s->voiced ? T(D_STOP_VD) : T(D_STOP_VL));
     case M_AFFRICATE: return s->voiced ? 45 : 50;
     case M_IMPLOSIVE: return 55;
     case M_CLICK: return 45;
-    case M_NASAL: return 62;
+    case M_NASAL: return T(D_NASAL);
     case M_TRILL: return s->place == P_ALVEOLAR ? 75 : 65;
     case M_TAP: case M_LATTAP: return 24;
-    case M_LATAPPROX: return 58;
+    case M_LATAPPROX: return T(D_LAT);
     case M_APPROX:
-        if (s->place == P_ALVEOLAR || s->place == P_RETROFLEX) return 58;
-        return 48;
+        if (s->place == P_ALVEOLAR || s->place == P_RETROFLEX) return T(D_RHO);
+        return T(D_APPROX);
     case M_FRIC: case M_LATFRIC:
         if (s->place == P_GLOTTAL) return 58;
-        if (s->sibilant) return s->voiced ? 78 : 98;
-        return s->voiced ? 68 : 88;
+        if (s->sibilant) return T(D_FRIC) * (s->voiced ? 78 : 98);
+        return T(D_FRIC) * (s->voiced ? 68 : 88);
     }
     return 60;
 }
@@ -374,13 +402,13 @@ static float trans_ms(const Seg *c) {
     if (!c || c->kind == K_PAUSE) return 0;
     if (c->kind == K_VOWEL) return 0;
     switch (c->manner) {
-    case M_PLOSIVE: case M_IMPLOSIVE: case M_CLICK: return c->aspirated ? 20 : 40;
+    case M_PLOSIVE: case M_IMPLOSIVE: case M_CLICK: return c->aspirated ? 0.5f * T(TR_STOP) : T(TR_STOP);
     case M_AFFRICATE: return 30;
-    case M_NASAL: return 30;
-    case M_TRILL: case M_TAP: case M_LATTAP: return 30;
-    case M_LATAPPROX: return 35;
-    case M_APPROX: return 60;
-    case M_FRIC: case M_LATFRIC: return c->place == P_GLOTTAL ? 0 : 35;
+    case M_NASAL: return T(TR_NASAL);
+    case M_TRILL: case M_TAP: case M_LATTAP: return T(TR_TAP);
+    case M_LATAPPROX: return T(TR_LAT);
+    case M_APPROX: return T(TR_APPROX);
+    case M_FRIC: case M_LATFRIC: return c->place == P_GLOTTAL ? 0 : T(TR_FRIC);
     }
     return 35;
 }
@@ -444,6 +472,7 @@ static void smooth(float *x, int n, size_t stride, int w) {
 
 int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
     SegList L;
+    ipr_tune_init();
     memset(out, 0, sizeof *out);
     if (expand(in, &L)) { ipr_seglist_free(&L); return IPR_ERR_MEMORY; }
     Seg *S = L.s;
@@ -497,11 +526,6 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
                 int split = (cur < 0 || r == k) ? k : r - 1;
                 if (cur >= 0 && r - k >= 1) {
                     for (int q = k; q < r; q++) if (S[q].stress != 0) { split = q; break; }
-                    if (S[r].stress != 0 && split == r - 1) {
-                        int expl = 0;
-                        for (int q = k; q < r; q++) if (S[q].stress != 0) expl = 1;
-                        if (!expl) split = r; /* mark sits on nucleus itself */
-                    }
                     /* keep common onset clusters (obstruent + liquid/glide) together */
                     if (split == r - 1 && r - 2 >= k) {
                         Seg *a = &S[r - 2], *b = &S[r - 1];
@@ -543,6 +567,15 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
         }
     }
 
+    /* ---- citation forms and final releases ---- */
+    for (int i = 0; i < N; i++) {
+        if (S[i].kind == K_PAUSE) continue;
+        int prev_brk = (i == 0) || (S[i - 1].kind == K_PAUSE && S[i - 1].pause_kind != PZ_WORD);
+        int next_brk = (i == N - 1) || (S[i + 1].kind == K_PAUSE && S[i + 1].pause_kind != PZ_WORD);
+        S[i].final_release = next_brk;
+        S[i].citation = prev_brk && next_brk;
+    }
+
     /* ---- durations ---- */
     float lead = (o && (o->flags & IPR_FLAG_NO_LEADING_SILENCE)) ? 0 : 40;
     float t = lead;
@@ -558,6 +591,7 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
             case PZ_MAJOR: d = 420; break;
             default: d = 480; break;
             }
+            d *= T(D_PAUSE);
             if (s->pause_kind != PZ_WORD) d /= speed > 1 ? sqrtf(speed) : speed;
             s->dur = d;
             s->t0 = t; t += d;
@@ -583,24 +617,33 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
             if (b + 1 >= N || next_pause != PZ_WORD) final_syl = (S[b].syl == s->syl);
         }
         if (s->kind == K_VOWEL || s->nucleus) {
-            if (st == 2) d *= 1.4f; else if (st == 1) d *= 1.15f; else if (word_has_stress) d *= 0.85f;
-            if (final_syl) d *= (s->length > 1.4f) ? 1.1f : 1.3f;
+            if (st == 2) d *= T(D_STRESS1); else if (st == 1) d *= T(D_STRESS2); else if (word_has_stress) d *= T(D_UNSTR);
+            if (final_syl) d *= (s->length > 1.4f) ? 1.1f : T(D_FINAL);
             if (s->nasal > 0) d *= 1.05f;
             if (s->kind == K_CONS && s->nucleus) d *= 1.5f;
         } else {
             int prevc = i > 0 && S[i - 1].kind == K_CONS && !S[i - 1].nucleus;
             int nextc = i + 1 < N && S[i + 1].kind == K_CONS && !S[i + 1].nucleus;
-            if (prevc || nextc) d *= 0.82f;
-            if (final_syl) d *= 1.15f;
+            if (prevc || nextc) d *= T(D_CLUSTER);
+            if (final_syl) d *= T(D_CONS_FINAL);
             if (st == 2) d *= 1.08f;
         }
         d *= s->length;
         if (s->short_release) d = base_duration(s) * s->length * 0.8f;
+        if (s->citation) {
+            /* a sound spoken on its own: give it a clear citation-form duration */
+            if (s->kind == K_VOWEL) d = 330 * fmaxf(s->length, 0.7f);
+            else if (s->manner == M_TAP || s->manner == M_LATTAP) d = 140;
+            else if (s->manner == M_PLOSIVE && s->place == P_GLOTTAL) d = 220;
+            else if (!is_stoplike(s)) d = 300 * fmaxf(s->length, 0.7f);
+        }
         d /= speed;
         if (is_stoplike(s)) {
             StopTiming tm; stop_timing(s, &tm);
-            float rel = (tm.burst + tm.vot + tm.gap) / (speed > 1 ? sqrtf(speed) : speed);
-            if (i == 0 || S[i - 1].kind == K_PAUSE) d = (d > 35 ? 35 : d); /* initial closure is silence */
+            float rel = (tm.burst + tm.vot + tm.gap + tm.trail) / (speed > 1 ? sqrtf(speed) : speed);
+            int after_pause = (i == 0 || (S[i - 1].kind == K_PAUSE && S[i - 1].pause_kind != PZ_WORD));
+            if (after_pause && !s->voiced && !s->citation) d = (d > 35 ? 35 : d); /* initial closure is silence */
+            if (s->citation) d = 70 / speed;
             d += rel;
         }
         if (d < 8) d = 8;
@@ -668,7 +711,7 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
         }
         if (is_stoplike(s)) {
             StopTiming tm; stop_timing(s, &tm);
-            float rel = (tm.burst + tm.vot + tm.gap) / (speed > 1 ? sqrtf(speed) : speed);
+            float rel = (tm.burst + tm.vot + tm.gap + tm.trail) / (speed > 1 ? sqrtf(speed) : speed);
             float trel = t1 - rel;
             if (add_anchor(&A, t0, &fa, 0)) goto oom;
             if (add_anchor(&A, trel, &fb, 0)) goto oom;
@@ -734,24 +777,24 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
             if (s->glottalized) f->creak = fmaxf(f->creak, 0.7f);
 
             if (s->kind == K_VOWEL) {
-                if (s->voiced) { f->av = (1.0f + 0.5f * clampf(s->height, 0, 1)) * (1.0f + 0.7f * s->nasal); }
+                if (s->voiced) { f->av = (1.0f + T(VOWEL_AV_H) * clampf(s->height, 0, 1)) * (1.0f + 0.7f * s->nasal); }
                 else { f->av = 0; f->ah = 0.55f; }
                 continue;
             }
             int p = s->place;
             switch (s->manner) {
             case M_NASAL: {
-                f->av = s->voiced ? 0.8f : 0; if (!s->voiced) f->ah = 0.35f;
+                f->av = s->voiced ? T(NASAL_AV) : 0; if (!s->voiced) f->ah = 0.35f;
                 f->fnp = 270; f->bnp = 100;
-                f->fnz = NASAL_ZERO[p]; f->bnz = 150;
+                f->fnz = NASAL_ZERO[p]; f->bnz = T(NASAL_BZ);
                 break;
             }
             case M_APPROX:
-                f->av = s->voiced ? 0.8f : 0;
+                f->av = s->voiced ? T(APPROX_AV) : 0;
                 if (!s->voiced) { f->ah = 0.45f; set_spec(f, &FRIC_SPEC[p], 0.6f * v->frication_gain, 1, 1); }
                 break;
             case M_LATAPPROX:
-                f->av = s->voiced ? 1.0f : 0;
+                f->av = s->voiced ? T(LAT_AV) : 0;
                 if (!s->voiced) { set_spec(f, &LATFRIC_SPEC, 0.6f * v->frication_gain, 1, 1); f->ah = 0.2f; }
                 break;
             case M_TAP: case M_LATTAP: {
@@ -775,18 +818,18 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
                 const Spec *sp = s->manner == M_LATFRIC ? &LATFRIC_SPEC : &FRIC_SPEC[p];
                 float shift = 1;
                 if (p == P_VELAR) shift = clampf(vF2 * 1.1f, 1200, 2900) / 1800.0f;
-                float amp = v->frication_gain;
+                float amp = v->frication_gain * db2lin(T(FRIC_DB) + (s->sibilant ? T(SIB_DB) : T(NONSIB_DB)));
                 if (!s->sibilant && s->manner == M_FRIC && (p == P_ALVEOLAR || p == P_POSTALV || p == P_RETROFLEX || p == P_ALVPAL)) amp *= 0.35f;
                 /* onset/offset ramps */
                 float e = fminf(fminf(pos, (float)len - pos) / 12.0f, 1.0f);
                 if (p == P_GLOTTAL) {
                     f->av = s->voiced ? 0.45f : 0;
-                    f->ah = s->voiced ? 0.35f : 0.6f * e;
+                    f->ah = s->voiced ? 0.35f : T(H_AH) * e;
                     if (s->voiced) { f->breath = 0.8f; f->oq = 0.8f; }
                     break;
                 }
-                set_spec(f, sp, amp * (s->voiced ? 0.55f : 1.0f) * (0.3f + 0.7f * e), fscale > 1 ? sqrtf(fscale) : 1, shift);
-                if (s->voiced) { f->av = 0.5f; }
+                set_spec(f, sp, amp * (s->voiced ? T(VFRIC_NOISE) : 1.0f) * (0.3f + 0.7f * e), fscale > 1 ? sqrtf(fscale) : 1, shift);
+                if (s->voiced) { f->av = T(VFRIC_AV); }
                 if (p == P_PHARYNGEAL || p == P_EPIGLOTTAL) { f->ah = s->voiced ? 0.15f : 0.45f; if (s->voiced) f->creak = fmaxf(f->creak, 0.35f); f->av = s->voiced ? 0.65f : 0; }
                 if (p == P_LABVELAR) f->ah = 0.4f;
                 if (p == P_UVULAR && s->voiced) f->av = 0.6f;
@@ -795,15 +838,18 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
             default: { /* stop-like */
                 StopTiming tm; stop_timing(s, &tm);
                 float sc = speed > 1 ? sqrtf(speed) : speed;
-                float burst = tm.burst / sc, vot = tm.vot / sc, gap = tm.gap / sc;
-                float rel = burst + vot + gap;
+                float burst = tm.burst / sc, vot = tm.vot / sc, gap = tm.gap / sc, trail = tm.trail / sc;
+                float rel = burst + vot + gap + trail;
                 float closure = len - rel;
                 if (pos < closure) {
                     /* closure */
                     if (s->manner == M_IMPLOSIVE) { f->av = 0.25f + 0.4f * pos / fmaxf(closure, 1); f->tilt = 0.7f; }
-                    else if (s->voiced && p != P_GLOTTAL) { f->av = 0.2f; f->tilt = 0.92f; }
+                    else if (s->voiced && p != P_GLOTTAL) { f->av = s->citation ? 0.35f : T(VOICEBAR); f->tilt = 0.92f; }
                     else if (s->prenasal && pos < 5) { f->av = 0.3f; }
-                    if (p == P_GLOTTAL) { f->av = 0; }
+                    if (p == P_GLOTTAL) {
+                        f->av = 0;
+                        if (s->citation && (pos < 70 || pos > closure - 70)) { f->av = 0.7f; f->creak = 1.0f; }
+                    }
                     break;
                 }
                 float rp = pos - closure;
@@ -811,7 +857,7 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
                     if (rp < 1.0f) {
                         float amp = 1.0f;
                         const Spec *sp;
-                        static const Spec CK_BIL = {{800, 2000, 0, 0}, {400, 800, 1, 1}, {0, -8, NONE, NONE}, -12, -6};
+                        static const Spec CK_BIL = {{800, 2000, 0, 0}, {400, 800, 1, 1}, {0, -8, NONE, NONE}, -12, 3};
                         static const Spec CK_DEN = {{4000, 6500, 2500, 0}, {1500, 2000, 800, 1}, {0, -3, -8, NONE}, -10, -6};
                         static const Spec CK_ALV = {{1800, 3000, 0, 0}, {350, 800, 1, 1}, {0, -8, NONE, NONE}, -20, 4};
                         static const Spec CK_PAL = {{3000, 4500, 0, 0}, {400, 900, 1, 1}, {0, -6, NONE, NONE}, -20, 2};
@@ -825,6 +871,8 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
                         const Spec *sp = s->fric_lateral ? &LATFRIC_SPEC : &FRIC_SPEC[p == P_DENTAL ? P_DENTAL : p];
                         float noisy = (s->fric_lateral || p == P_DENTAL) ? 1.0f : 0.25f;
                         set_spec(f, sp, noisy * 1.0f * v->frication_gain * (1 - rp / burst), 1, 1);
+                    } else if (rp < burst + trail) {
+                        f->ah = 0.3f * (1.0f - (rp - burst) / trail);
                     } else {
                         f->av = 0;
                     }
@@ -835,7 +883,7 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
                     if (s->manner == M_AFFRICATE) {
                         int fp = s->fric_place;
                         const Spec *sp = s->fric_lateral ? &LATFRIC_SPEC : &FRIC_SPEC[fp];
-                        float a = v->frication_gain * (s->fric_voiced ? 0.6f : 1.0f);
+                        float a = v->frication_gain * (s->fric_voiced ? T(VAFF_NOISE) : 1.0f);
                         if (!s->fric_sibilant && !s->fric_lateral && (fp == P_ALVEOLAR || fp == P_POSTALV)) a *= 0.35f;
                         float e = rp < 3 ? 1.6f : fminf(1.0f, (burst - rp) / 10.0f);
                         set_spec(f, sp, a * e, fscale > 1 ? sqrtf(fscale) : 1, 1);
@@ -845,7 +893,7 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
                         float shift = 1;
                         if (p == P_VELAR) shift = clampf(vF2 * 1.15f, 1300, 3000) / 2000.0f;
                         float decay = expf(-rp / fmaxf(burst * 0.45f, 1));
-                        float a = v->frication_gain * (s->ejective ? 1.5f : 1.0f) * (s->voiced ? 0.6f : 1.0f);
+                        float a = v->frication_gain * db2lin(T(BURST_DB)) * (s->ejective ? 1.5f : 1.0f) * (s->voiced ? T(VD_BURST) : 1.0f);
                         if (s->manner == M_IMPLOSIVE) a *= 0.3f;
                         set_spec(f, &BURST_SPEC[p], a * decay, fscale > 1 ? sqrtf(fscale) : 1, shift);
                         f->ah = (s->voiced ? 0.0f : 0.15f) * decay;
@@ -857,9 +905,15 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
                 if (rp < gap) { f->av = 0; break; } /* ejective glottal hold */
                 rp -= gap;
                 if (rp < vot) {
-                    f->ah = s->aspirated ? 0.5f * (1.0f - 0.4f * rp / vot) : 0.3f;
+                    f->ah = s->aspirated ? T(ASP_AH) * (1.0f - 0.4f * rp / vot) : T(UNASP_AH);
                     if (s->aspirated == 2) { f->av = 0.5f; f->breath = 0.9f; f->oq = 0.85f; }
                     break;
+                }
+                rp -= vot;
+                if (rp < trail) {
+                    float u = 1.0f - rp / trail;
+                    if (s->voiced) { f->av = 0.55f * u; f->ah = 0.04f * u; }
+                    else f->ah = 0.5f * u;
                 }
                 break;
             }
@@ -875,8 +929,8 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
         }
         if (s->kind == K_CONS && s->manner == M_NASAL && s->voiced) {
             /* anticipatory/carryover nasalization of neighbouring vowels */
-            for (int fi = f0i - 35; fi < f0i; fi++) if (fi >= 0 && F[fi].av > 0.9f) F[fi].fnz = fmaxf(F[fi].fnz, 270 + 120 * (fi - f0i + 35) / 35.0f);
-            for (int fi = f1i; fi < f1i + 20 && fi < nf; fi++) if (F[fi].av > 0.9f) F[fi].fnz = fmaxf(F[fi].fnz, 270 + 120 * (f1i + 20 - fi) / 20.0f);
+            for (int fi = f0i - 35; fi < f0i; fi++) if (fi >= 0 && F[fi].av > 0.9f) F[fi].fnz = fmaxf(F[fi].fnz, 270 + T(NASALIZE) * (fi - f0i + 35) / 35.0f);
+            for (int fi = f1i; fi < f1i + 20 && fi < nf; fi++) if (F[fi].av > 0.9f) F[fi].fnz = fmaxf(F[fi].fnz, 270 + T(NASALIZE) * (f1i + 20 - fi) / 20.0f);
         }
         (void)nx;
     }
@@ -916,7 +970,7 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
                     if (S[q].voiced && !is_obstruent(&S[q])) b = S[q].t0 + S[q].dur; else break;
                 }
                 float rel = ((a + b) * 0.5f - tstart) / plen;
-                float decl = intonation ? (1.0f - 2.0f * rel) * 1.2f * R : 0;  /* semitones */
+                float decl = intonation ? (1.0f - 2.0f * rel) * T(DECL) * R : 0;  /* semitones */
                 if (s->tone_step) step += 2.2f * s->tone_step;
                 int st = syl_stress[s->syl];
                 if (tonal) {
@@ -942,14 +996,14 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
                     }
                 } else {
                     float acc = 0;
-                    if (st == 2) acc = 3.2f * R; else if (st == 1) acc = 1.4f * R;
+                    if (st == 2) acc = T(ACC1) * R; else if (st == 1) acc = 0.44f * T(ACC1) * R;
                     if (ptype == PZ_EXCLAIM) acc *= 1.4f;
                     if (!intonation) decl = 0;
                     float s0 = decl + acc * 0.5f + step, s1 = decl + acc + step, s2 = decl + acc * 0.6f + step;
                     if (intonation && k == last_nuc) {
                         if (ptype == PZ_QUESTION) { s0 = decl + acc * 0.3f; s1 = s0 + 2.0f * R; s2 = s0 + 6.0f * R; }
                         else if (ptype == PZ_COMMA || ptype == PZ_MINOR) { s2 = s1 + 1.5f * R; }
-                        else if (ptype != PZ_WORD) { s2 = decl - 3.5f * R; s1 = fmaxf(s1, s0); }
+                        else if (ptype != PZ_WORD) { s2 = decl - T(FINAL_FALL) * R; s1 = fmaxf(s1, s0); }
                     } else if (intonation && k == last_stressed && ptype != PZ_QUESTION && any_stress && nn > 1) {
                         s1 = decl + acc * 1.15f; s2 = decl + acc * 0.2f;
                     }
@@ -977,13 +1031,35 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
         }
     }
 
+    /* ---- microprosody and stress loudness ---- */
+    for (int i = 1; i < N; i++) {
+        Seg *s = &S[i], *pv = &S[i - 1];
+        if (s->kind != K_VOWEL || pv->kind != K_CONS || !is_obstruent(pv)) continue;
+        /* F0 is raised after voiceless and lowered after voiced obstruents */
+        float m = pv->voiced ? -T(MICRO_VD) : T(MICRO_VL);
+        int f0i = (int)s->t0;
+        for (int k = 0; k < 60 && f0i + k < nf; k++) F[f0i + k].f0 *= 1.0f + m * (1.0f - k / 60.0f);
+    }
+    for (int i = 0; i < N; i++) {
+        Seg *s = &S[i];
+        if (s->kind != K_VOWEL || s->syl < 0) continue;
+        int st = syl_stress[s->syl];
+        int any = 0;
+        for (int q = i; q >= 0 && S[q].kind != K_PAUSE; q--) if (S[q].stress > 0) any = 1;
+        for (int q = i; q < N && S[q].kind != K_PAUSE; q++) if (S[q].stress > 0) any = 1;
+        if (!any) continue;
+        float g = st == 2 ? 1.0f + T(STRESS_AMP) : st == 1 ? 1.0f : 1.0f - T(STRESS_AMP);
+        int a0 = (int)s->t0, a1 = (int)(s->t0 + s->dur);
+        for (int fi = a0; fi < a1 && fi < nf; fi++) F[fi].av *= g;
+    }
+
     /* ---- smoothing ---- */
-    for (int k = 0; k < 5; k++) { SMOOTH_FIELD(F, nf, F[k], 9); SMOOTH_FIELD(F, nf, B[k], 9); }
+    for (int k = 0; k < 5; k++) { SMOOTH_FIELD(F, nf, F[k], (int)T(SM_F)); SMOOTH_FIELD(F, nf, B[k], (int)T(SM_F)); }
     SMOOTH_FIELD(F, nf, fnz, 15);
     SMOOTH_FIELD(F, nf, fnp, 15);
     SMOOTH_FIELD(F, nf, bnz, 9);
     SMOOTH_FIELD(F, nf, f0, 25);
-    SMOOTH_FIELD(F, nf, av, 7);
+    SMOOTH_FIELD(F, nf, av, (int)T(SM_AV));
     SMOOTH_FIELD(F, nf, ah, 5);
     SMOOTH_FIELD(F, nf, af, 3);
     SMOOTH_FIELD(F, nf, creak, 9);
@@ -996,7 +1072,7 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
         Frame *f = &F[fi];
         for (int k = 0; k < 5; k++) {
             f->F[k] *= fscale * v->formant_shift[k];
-            f->B[k] *= v->bandwidth_scale * (fscale > 1 ? 1.0f + (fscale - 1) * 0.5f : 1.0f);
+            f->B[k] *= v->bandwidth_scale * (fscale > 1 ? 1.0f + (fscale - 1) * 0.5f : 1.0f) * (k == 0 ? T(B1K) : k == 1 ? T(B2K) : k == 2 ? T(B3K) : T(B45K));
         }
         f->fnp *= fscale; f->fnz *= fscale;
     }
