@@ -182,7 +182,7 @@ static void seg_target(const Seg *s, Formants *o) {
         int p = s->place;
         switch (s->manner) {
         case M_NASAL:
-            o->F[0] = 250; o->B[0] = 80;
+            o->F[0] = T(MUR_F1); o->B[0] = T(MUR_B1);
             if (p == P_BILABIAL || p == P_LABIODENTAL) { o->F[1] = T(M_F2); o->F[2] = 2200; }
             else if (p == P_ALVEOLAR || p == P_DENTAL) { o->F[1] = T(N_F2); o->F[2] = T(N_F3); }
             else if (p == P_RETROFLEX) { o->F[1] = 1500; o->F[2] = 2000; }
@@ -241,7 +241,7 @@ static void coartic(const Seg *c, const Formants *own, const Formants *v, Forman
     *o = *own;
     if (c->kind != K_CONS) return;
     if (is_obstruent(c)) k = LOCUS[c->place][3];
-    else if (c->manner == M_NASAL) k = (c->place == P_VELAR) ? T(K_NG) : T(K_NASAL);
+    else if (c->manner == M_NASAL) k = (c->place == P_VELAR) ? (v->F[1] < T(PINCH_BACK) && T(PINCH_MODE) > 1.5f ? T(K_NG_BACK) : T(K_NG)) : T(K_NASAL);
     else if (c->manner == M_TRILL || c->manner == M_TAP) k = 0.35f;
     else k = 0.12f; /* approximants keep their own target */
     k = clampf(k * T(K_SCALE), 0, 1);
@@ -257,8 +257,10 @@ static void coartic(const Seg *c, const Formants *own, const Formants *v, Forman
     if (c->place == P_GLOTTAL) for (int i = 0; i < 5; i++) o->B[i] = v->B[i] * 1.3f;
     /* velar pinch: F2 and F3 come together at velar closures (k, ɡ, ŋ) */
     if (c->place == P_VELAR && T(PINCH) > 0 && (is_obstruent(c) || c->manner == M_NASAL)) {
-        float mid = 0.5f * (o->F[1] + o->F[2]);
-        if (o->F[2] - o->F[1] > T(PINCH)) { o->F[1] = mid - 0.5f * T(PINCH); o->F[2] = mid + 0.5f * T(PINCH); }
+        if (o->F[2] - o->F[1] > T(PINCH)) {
+            if (T(PINCH_MODE) > 1.5f ? v->F[1] < T(PINCH_BACK) : T(PINCH_MODE) > 0.5f) o->F[2] = o->F[1] + T(PINCH);   /* back vowels: F3 drops to meet F2, F2 stays low */
+            else { float mid = 0.5f * (o->F[1] + o->F[2]); o->F[1] = mid - 0.5f * T(PINCH); o->F[2] = mid + 0.5f * T(PINCH); }
+        }
     }
 }
 
@@ -650,6 +652,7 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
             else if (s->manner == M_TAP || s->manner == M_LATTAP) d = 140;
             else if (s->manner == M_PLOSIVE && s->place == P_GLOTTAL) d = 220;
             else if (!is_stoplike(s)) d = 300 * fmaxf(s->length, 0.7f);
+            if (s->kind == K_CONS && s->manner == M_NASAL) d += T(NREL);
         }
         d /= speed;
         if (is_stoplike(s)) {
@@ -677,6 +680,7 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
         f->tilt = v->spectral_tilt;
         f->breath = v->breathiness;
         f->fnp = 270; f->bnp = 100; f->fnz = 270; f->bnz = 100;
+        f->vpf = 1500; f->vpb = 250; f->vpa = 0;
         for (int k = 0; k < NPAR; k++) { f->pf[k] = 1000; f->pb[k] = 500; f->pa[k] = 0; }
     }
 
@@ -753,6 +757,14 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
             }
             continue;
         }
+        if (s->manner == M_NASAL && s->citation && T(NREL) > 0) {
+            /* a nasal said on its own: hum, then release the closure into an open neutral vowel */
+            float rel = T(NREL) / speed;
+            if (add_anchor(&A, t0 + 20, &fa, 0)) goto oom;
+            if (add_anchor(&A, t1 - rel, &fb, 0)) goto oom;
+            if (add_anchor(&A, t1, &schwa, 0)) goto oom;
+            continue;
+        }
         if (s->manner == M_APPROX || s->manner == M_LATAPPROX || s->manner == M_NASAL) {
             float a = s->dur * 0.25f;
             if (add_anchor(&A, t0 + a, &fa, 0)) goto oom;
@@ -817,8 +829,22 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
             switch (s->manner) {
             case M_NASAL: {
                 f->av = s->voiced ? T(NASAL_AV) : 0; if (!s->voiced) f->ah = 0.35f;
-                f->fnp = 270; f->bnp = 100;
+                f->fnp = 270; f->bnp = T(MUR_BNP);
+                if (s->voiced && s->citation && T(MUR_PAR) > 0) {   /* only for nasals said on their own */
+                    /* place-specific murmur resonance: m low, n mid, ŋ high */
+                    f->vpf = (p == P_BILABIAL || p == P_LABIODENTAL) ? T(MUR_M) : (p == P_VELAR || p == P_UVULAR) ? T(MUR_NG) :
+                             (p == P_PALATAL || p == P_ALVPAL || p == P_POSTALV) ? 0.5f * (T(MUR_N) + T(MUR_NG)) : T(MUR_N);
+                    f->vpb = 250; f->vpa = T(MUR_PAR);
+                }
                 f->fnz = NASAL_ZERO[p] * (p == P_ALVEOLAR || p == P_DENTAL ? T(N_ZERO) : p == P_VELAR ? T(NG_ZERO) : p == P_BILABIAL ? T(M_ZERO) : 1.0f); f->bnz = T(NASAL_BZ);
+                if (s->citation && T(NREL) > 0) {
+                    float rel = T(NREL) / speed;
+                    if (pos > len - rel) {          /* release: mouth opens, nasal coupling fades, voice dies away */
+                        float u = (pos - (len - rel)) / rel;
+                        f->fnz = lerp(f->fnz, 270, fminf(1.0f, u * 2.5f));
+                        f->av = s->voiced ? T(NASAL_AV) * (1.0f + 0.4f * sinf((float)M_PI * fminf(u * 1.5f, 1.0f))) * (1.0f - u * u) : 0;
+                    }
+                }
                 break;
             }
             case M_APPROX:
@@ -1132,6 +1158,7 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
     SMOOTH_FIELD(F, nf, av, (int)T(SM_AV));
     SMOOTH_FIELD(F, nf, ah, 5);
     SMOOTH_FIELD(F, nf, af, 3);
+    SMOOTH_FIELD(F, nf, vpa, 9);
     SMOOTH_FIELD(F, nf, creak, 9);
     SMOOTH_FIELD(F, nf, breath, 9);
     SMOOTH_FIELD(F, nf, oq, 9);
@@ -1145,6 +1172,7 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
             f->B[k] *= v->bandwidth_scale * (fscale > 1 ? 1.0f + (fscale - 1) * 0.5f : 1.0f) * (k == 0 ? T(B1K) : k == 1 ? T(B2K) : k == 2 ? T(B3K) : T(B45K));
         }
         f->fnp *= fscale; f->fnz *= fscale;
+        f->vpf *= fscale * v->formant_shift[1];
     }
 
     free(P.p);

@@ -153,6 +153,7 @@ static double rng_gauss(Rng *r) {
 
 int ipr_render(const Plan *p, const ipr_voice *v, int fs, float gain, ipr_float_cb cb, void *user) {
     Reson casc[7], np;
+    Band vpar; memset(&vpar, 0, sizeof vpar);
     Anti nz;
     Band par[NPAR];
     memset(casc, 0, sizeof casc); memset(&np, 0, sizeof np); memset(&nz, 0, sizeof nz); memset(par, 0, sizeof par);
@@ -194,6 +195,7 @@ int ipr_render(const Plan *p, const ipr_voice *v, int fs, float gain, ipr_float_
             reson_set(&casc[5], 5500 * fsc, 500, fs);
             reson_set(&casc[6], 6600 * fsc, 700, fs);
             reson_set(&np, IP(fnp), IP(bnp), fs);
+            band_set(&vpar, IP(vpf), IP(vpb), fs);
             anti_set(&nz, IP(fnz), IP(bnz), fs);
             for (int k = 0; k < NPAR; k++) band_set(&par[k], IP(pf[k]), IP(pb[k]), fs);
         }
@@ -257,6 +259,8 @@ int ipr_render(const Plan *p, const ipr_voice *v, int fs, float gain, ipr_float_
         x = anti_run(&nz, x);
         for (int k = 0; k < NCASC; k++) x = reson_run(&casc[k], x);
         /* lip radiation: first difference (+6 dB/octave) */
+        double vpa = IP(vpa);
+        if (vpa > 1e-4 || fabs(vpar.y1) > 1e-9) x += band_run(&vpar, voice) * vpa * 40.0;   /* murmur colour */
         double cascade = x - rad_coef * rad_prev;
         rad_prev = x;
         cascade = bq_run(&eq_mid, bq_run(&eq_lo, cascade));

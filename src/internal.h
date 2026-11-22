@@ -99,6 +99,7 @@ typedef struct Frame {
     float creak;    /* 0..1 */
     float breath;   /* breathy noise during voicing */
     float imp;      /* impulse amplitude at this frame (clicks) */
+    float vpf, vpb, vpa; /* voiced parallel resonance (nasal murmur colour) */
 } Frame;
 
 typedef struct Plan {
