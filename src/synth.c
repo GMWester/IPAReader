@@ -172,6 +172,7 @@ int ipr_render(const Plan *p, const ipr_voice *v, int fs, float gain, ipr_float_
     double ret_ms = T(RET_MS), hfn = T(HFN), hf_prev = 0;
     /* voice spectral balance: tame the low end, lift the 1-3 kHz presence region */
     double eq_gain = T(EQ_GAIN), noise_gain = T(NOISE_GAIN), flutter = T(FLUTTER);
+    size_t coef_mask = (size_t)T(COEF_STEP) - 1;   /* recompute filter coefficients every COEF_STEP samples (power of 2) */
     int use_lf = T(LF_ON) > 0.5; double lf_gain = T(LF_GAIN); LF lf; memset(&lf, 0, sizeof lf); lf.rd = -1;
     Biquad eq_lo, eq_mid;
     memset(&eq_lo, 0, sizeof eq_lo); memset(&eq_mid, 0, sizeof eq_mid);
@@ -189,7 +190,7 @@ int ipr_render(const Plan *p, const ipr_voice *v, int fs, float gain, ipr_float_
         double f0 = IP(f0), av = IP(av), ah = IP(ah), af = IP(af);
         double oq = IP(oq), tilt = IP(tilt), creak = IP(creak), breath = IP(breath);
 
-        if ((n & 7) == 0) {
+        if ((n & coef_mask) == 0) {
             for (int k = 0; k < 5; k++) reson_set(&casc[k], IP(F[k]), IP(B[k]), fs);
             double fsc = IP(F[3]) / 3500.0;
             reson_set(&casc[5], 5500 * fsc, 500, fs);
