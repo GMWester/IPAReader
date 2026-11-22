@@ -258,7 +258,10 @@ static void coartic(const Seg *c, const Formants *own, const Formants *v, Forman
     /* velar pinch: F2 and F3 come together at velar closures (k, ɡ, ŋ) */
     if (c->place == P_VELAR && T(PINCH) > 0 && (is_obstruent(c) || c->manner == M_NASAL)) {
         if (o->F[2] - o->F[1] > T(PINCH)) {
-            if (T(PINCH_MODE) > 1.5f ? v->F[1] < T(PINCH_BACK) : T(PINCH_MODE) > 0.5f) o->F[2] = o->F[1] + T(PINCH);   /* back vowels: F3 drops to meet F2, F2 stays low */
+            if (T(PINCH_MODE) > 1.5f ? v->F[1] < T(PINCH_BACK) : T(PINCH_MODE) > 0.5f) {
+                o->F[2] = o->F[1] + T(PINCH);   /* back vowels: F3 drops to meet F2, F2 stays low */
+                if (c->manner == M_NASAL) { o->B[1] *= T(NG_BW_BACK); o->B[2] *= T(NG_BW_BACK); }   /* damped, clearly nasal murmur (not l-like) */
+            }
             else { float mid = 0.5f * (o->F[1] + o->F[2]); o->F[1] = mid - 0.5f * T(PINCH); o->F[2] = mid + 0.5f * T(PINCH); }
         }
     }
