@@ -802,6 +802,22 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
         }
     }
 
+    /* ---- nasal murmur: during the closure the sound resonates in the nose and pharynx, not the mouth ---- */
+    if (T(MUR_TRACT) > 0) {
+        for (int i = 0; i < N; i++) {
+            Seg *s = &S[i];
+            if (s->kind != K_CONS || s->manner != M_NASAL || s->nucleus || !s->citation) continue;   /* isolated nasals only */
+            int a0 = (int)s->t0, a1 = (int)(s->t0 + s->dur);
+            if (s->citation && nasal_rel(s) > 0) a1 -= (int)(nasal_rel(s) / speed);   /* keep the release oral */
+            int edge = 6;
+            for (int fi = a0 + edge; fi < a1 - edge && fi < nf; fi++) {
+                float w = T(MUR_TRACT);
+                F[fi].F[1] = lerp(F[fi].F[1], T(MUR_F2), w); F[fi].B[1] = lerp(F[fi].B[1], 200, w);
+                F[fi].F[2] = lerp(F[fi].F[2], T(MUR_F3), w); F[fi].B[2] = lerp(F[fi].B[2], 300, w);
+            }
+        }
+    }
+
     /* ---- source parameters per segment ---- */
     for (int i = 0; i < N; i++) {
         Seg *s = &S[i];
@@ -832,7 +848,7 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
             switch (s->manner) {
             case M_NASAL: {
                 f->av = s->voiced ? T(NASAL_AV) : 0; if (!s->voiced) f->ah = 0.35f;
-                f->fnp = 270; f->bnp = T(MUR_BNP);
+                f->fnp = s->citation ? T(CIT_FNP) : 270; f->bnp = s->citation ? T(CIT_BNP) : T(MUR_BNP);
                 if (s->voiced && s->citation && T(MUR_PAR) > 0) {   /* only for nasals said on their own */
                     /* place-specific murmur resonance: m low, n mid, ŋ high */
                     f->vpf = (p == P_BILABIAL || p == P_LABIODENTAL) ? T(MUR_M) : (p == P_VELAR || p == P_UVULAR) ? T(MUR_NG) :
