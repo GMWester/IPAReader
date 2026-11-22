@@ -191,7 +191,7 @@ static void seg_target(const Seg *s, Formants *o) {
             else if (p == P_UVULAR) { o->F[1] = 1200; o->F[2] = 2400; }
             else if (p == P_LABVELAR) { o->F[1] = 1000; o->F[2] = 2200; }
             o->B[1] = 150; o->B[2] = 200;
-            if (p == P_VELAR || p == P_UVULAR) { o->B[1] *= T(NG_BW); o->B[2] *= T(NG_BW); }   /* darker murmur */
+            if (p == P_VELAR || p == P_UVULAR) { float w = s->citation ? T(CIT_NG_BW) : T(NG_BW); o->B[1] *= w; o->B[2] *= w; }
             if (p == P_BILABIAL || p == P_LABIODENTAL) { o->B[1] *= T(M_BW); o->B[2] *= T(M_BW); }
             if (p == P_ALVEOLAR || p == P_DENTAL) { o->B[1] *= T(N_BW); o->B[2] *= T(N_BW); }
             break;
@@ -359,6 +359,9 @@ static void stop_timing(const Seg *s, StopTiming *t) {
     if (s->citation && s->manner == M_CLICK) t->trail = 45;
 }
 
+static float nasal_rel(const Seg *s) {   /* release length (ms) of a nasal said on its own */
+    return (s->place == P_VELAR || s->place == P_UVULAR) ? T(NREL_NG) : T(NREL);
+}
 static float cons_duration(const Seg *s);
 static float base_duration(const Seg *s) {
     if (s->kind == K_VOWEL) {
@@ -652,7 +655,7 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
             else if (s->manner == M_TAP || s->manner == M_LATTAP) d = 140;
             else if (s->manner == M_PLOSIVE && s->place == P_GLOTTAL) d = 220;
             else if (!is_stoplike(s)) d = 300 * fmaxf(s->length, 0.7f);
-            if (s->kind == K_CONS && s->manner == M_NASAL) d += T(NREL);
+            if (s->kind == K_CONS && s->manner == M_NASAL) d += nasal_rel(s);
         }
         d /= speed;
         if (is_stoplike(s)) {
@@ -757,9 +760,9 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
             }
             continue;
         }
-        if (s->manner == M_NASAL && s->citation && T(NREL) > 0) {
+        if (s->manner == M_NASAL && s->citation && nasal_rel(s) > 0) {
             /* a nasal said on its own: hum, then release the closure into an open neutral vowel */
-            float rel = T(NREL) / speed;
+            float rel = nasal_rel(s) / speed;
             if (add_anchor(&A, t0 + 20, &fa, 0)) goto oom;
             if (add_anchor(&A, t1 - rel, &fb, 0)) goto oom;
             if (add_anchor(&A, t1, &schwa, 0)) goto oom;
@@ -834,11 +837,11 @@ int ipr_plan(SegList *in, const ipr_voice *v, const ipr_options *o, Plan *out) {
                     /* place-specific murmur resonance: m low, n mid, ŋ high */
                     f->vpf = (p == P_BILABIAL || p == P_LABIODENTAL) ? T(MUR_M) : (p == P_VELAR || p == P_UVULAR) ? T(MUR_NG) :
                              (p == P_PALATAL || p == P_ALVPAL || p == P_POSTALV) ? 0.5f * (T(MUR_N) + T(MUR_NG)) : T(MUR_N);
-                    f->vpb = 250; f->vpa = T(MUR_PAR);
+                    f->vpb = 250; f->vpa = T(MUR_PAR) * ((p == P_VELAR || p == P_UVULAR) ? T(MUR_NG_A) : 1.0f);
                 }
                 f->fnz = NASAL_ZERO[p] * (p == P_ALVEOLAR || p == P_DENTAL ? T(N_ZERO) : p == P_VELAR ? T(NG_ZERO) : p == P_BILABIAL ? T(M_ZERO) : 1.0f); f->bnz = T(NASAL_BZ);
-                if (s->citation && T(NREL) > 0) {
-                    float rel = T(NREL) / speed;
+                if (s->citation && nasal_rel(s) > 0) {
+                    float rel = nasal_rel(s) / speed;
                     if (pos > len - rel) {          /* release: mouth opens, nasal coupling fades, voice dies away */
                         float u = (pos - (len - rel)) / rel;
                         f->fnz = lerp(f->fnz, 270, fminf(1.0f, u * 2.5f));
